@@ -160,7 +160,7 @@ See [SECURITY.md](SECURITY.md) for more details.
 ### Frontend (Vercel/Netlify)
 1. Build the app: `npm run build`
 2. Deploy the `dist/` folder
-3. Set environment variables in hosting platform
+3. Set environment variables in the hosting platform
 
 ### Backend
 1. Deploy to a Python hosting service (Render, Railway, Fly.io, etc.)

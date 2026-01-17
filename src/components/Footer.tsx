@@ -1,7 +1,7 @@
 /**
  * Footer Component
  *
- * Standard footer with Tech Titans trademark.
+ * Standard footer for ArchePal.
  * Displays at the bottom of all pages.
  */
 
@@ -22,10 +22,6 @@ export const Footer = () => {
           >
             Testimonials
           </Link>
-          <span className="hidden sm:inline">|</span>
-          <span className="font-medium">
-             <Link to={"https://github.com/Ak-dude/myarchepal-techtitans"}>Tech Titans</Link>
-          </span>
         </div>
       </div>
     </footer>

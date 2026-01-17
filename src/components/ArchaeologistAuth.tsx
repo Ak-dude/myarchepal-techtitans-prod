@@ -15,7 +15,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { UserService } from '@/services/users';
 import { UserRoleService } from '@/services/userRoles';
 import { DEFAULT_ORGANIZATION_ID, ROLE_IDS } from '@/types/organization';
-import { Loader2, Mail, Lock, GraduationCap, CheckCircle, User } from 'lucide-react';
+import { Loader2, Mail, Lock, GraduationCap, CheckCircle, User, Eye, EyeOff } from 'lucide-react';
 import { useKeyboard } from '@/hooks/use-keyboard';
 
 interface ArchaeologistAuthProps {
@@ -29,6 +29,9 @@ export const ArchaeologistAuth: React.FC<ArchaeologistAuthProps> = ({
 }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSigningUp, setIsSigningUp] = useState(defaultMode === 'signup');
   const [loading, setLoading] = useState(false);
   const [resetEmailSent, setResetEmailSent] = useState(false);
@@ -122,6 +125,16 @@ export const ArchaeologistAuth: React.FC<ArchaeologistAuthProps> = ({
       toast({
         title: "Missing Information",
         description: "Please fill in all required fields",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Password confirmation validation
+    if (password !== confirmPassword) {
+      toast({
+        title: "Passwords Don't Match",
+        description: "Please make sure your passwords match",
         variant: "destructive"
       });
       return;
@@ -296,17 +309,61 @@ export const ArchaeologistAuth: React.FC<ArchaeologistAuthProps> = ({
               <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 id="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={isSigningUp ? "Password (min. 6 characters)" : "Enter your password"}
-                className="pl-10"
+                className="pl-10 pr-10"
                 minLength={isSigningUp ? 6 : undefined}
                 required
                 disabled={loading}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                disabled={loading}
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
             </div>
           </div>
+
+          {isSigningUp && (
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm Password *</Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm your password"
+                  className="pl-10 pr-10"
+                  minLength={6}
+                  required
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  disabled={loading}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
 
           {isSigningUp && (
             <>

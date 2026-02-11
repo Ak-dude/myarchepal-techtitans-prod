@@ -1,4 +1,4 @@
-import { Home, Compass, Plus, Heart, Newspaper, Package, PlusSquare, Calendar, Store, Menu, Users, User, Settings, Lock, Info, Mail, LogOut, ChevronRight, BookOpen, MessageSquare, Star } from "lucide-react";
+import { Home, Compass, Plus, Heart, Newspaper, Package, PlusSquare, Calendar, Store, Menu, Users, User, Settings, Lock, Info, Mail, LogOut, ChevronRight, BookOpen, MessageSquare, Star, Building2, Shield } from "lucide-react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useState } from "react";
 import {
@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { useArchaeologist } from "@/hooks/use-archaeologist";
+import { useUser } from "@/hooks/use-user";
 
 // Explore items (shown in Explore submenu)
 const exploreItems = [
@@ -52,6 +53,7 @@ export const BottomNav = () => {
   const location = useLocation();
   const { isAuthenticated, logout } = useAuth();
   const { isArchaeologist } = useArchaeologist();
+  const { isSuperAdmin, isAdmin } = useUser();
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
   const [isGiftShopSheetOpen, setIsGiftShopSheetOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -254,6 +256,49 @@ export const BottomNav = () => {
                     <ChevronRight className="w-4 h-4 text-muted-foreground" />
                   </Button>
                 ))}
+                {isAuthenticated && isAdmin && (
+                  <>
+                    <div className="border-t border-border my-2" />
+                    <Button
+                      variant="ghost"
+                      className="w-full h-auto py-3 px-4 flex items-center gap-4 hover:bg-muted/80 active:scale-[0.98] rounded-xl transition-all justify-start"
+                      onClick={() => handleMenuItemClick("/org-dashboard")}
+                    >
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        location.pathname === "/org-dashboard" ? "bg-primary/20" : "bg-muted"
+                      }`}>
+                        <Building2 className={`w-5 h-5 ${
+                          location.pathname === "/org-dashboard" ? "text-primary" : "text-muted-foreground"
+                        }`} />
+                      </div>
+                      <div className="text-left flex-1">
+                        <div className="text-body font-semibold text-foreground font-sans leading-snug">Organization</div>
+                        <div className="text-caption text-muted-foreground font-sans leading-snug">Manage your organization</div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                    {isSuperAdmin && (
+                      <Button
+                        variant="ghost"
+                        className="w-full h-auto py-3 px-4 flex items-center gap-4 hover:bg-muted/80 active:scale-[0.98] rounded-xl transition-all justify-start"
+                        onClick={() => handleMenuItemClick("/admin")}
+                      >
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          location.pathname === "/admin" ? "bg-primary/20" : "bg-muted"
+                        }`}>
+                          <Shield className={`w-5 h-5 ${
+                            location.pathname === "/admin" ? "text-primary" : "text-muted-foreground"
+                          }`} />
+                        </div>
+                        <div className="text-left flex-1">
+                          <div className="text-body font-semibold text-foreground font-sans leading-snug">Super Admin</div>
+                          <div className="text-caption text-muted-foreground font-sans leading-snug">Global admin dashboard</div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      </Button>
+                    )}
+                  </>
+                )}
                 <div className="border-t border-border my-2" />
                 {accountItems.map((item) => (
                   <Button

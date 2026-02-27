@@ -13,8 +13,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# Load .env for local dev (two levels up from api/services/ → project root)
-load_dotenv(Path(__file__).resolve().parents[2] / ".env")
+# api/.env for backend secrets, then project root .env for shared vars
+_here = Path(__file__).resolve()
+load_dotenv(_here.parents[1] / ".env")   # api/.env
+load_dotenv(_here.parents[2] / ".env")   # project root .env (won't override already-set vars)
 
 import firebase_admin
 from firebase_admin import auth as fb_auth, credentials

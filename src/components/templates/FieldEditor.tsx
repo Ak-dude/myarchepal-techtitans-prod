@@ -2,7 +2,7 @@
  * FieldEditor — right-panel property editor for a single TemplateField.
  * Used by both TemplateEditor (/templates/:id/edit) and TemplateBuilder (/templates/new/blank).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Trash2, Plus, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -59,34 +59,48 @@ export interface FieldEditorProps {
 
 function OptionsEditor({
   options,
-  onChange,
+  onSave,
 }: {
   options: string[];
-  onChange: (opts: string[]) => void;
+  /** Called when the options array changes (on blur or add/remove). */
+  onSave: (opts: string[]) => void;
 }) {
+  // Local state so typing doesn't trigger a Firestore save on every keystroke.
+  // Re-sync from props only when the set of options changes (e.g. field switched).
+  const [local, setLocal] = useState<string[]>(options);
+  const optKey = options.join('\x00');
+  useEffect(() => { setLocal(options); }, [optKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const commit = (next: string[]) => { setLocal(next); onSave(next); };
+
   return (
     <div className="space-y-1.5">
       <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
         Options
       </Label>
+      {local.length === 0 && (
+        <p className="text-xs text-muted-foreground italic">No options yet — click "Add option" below.</p>
+      )}
       <div className="space-y-1.5">
-        {options.map((opt, i) => (
+        {local.map((opt, i) => (
           <div key={i} className="flex items-center gap-1.5">
             <Input
               value={opt}
+              placeholder={`Option ${i + 1}`}
               className="h-7 text-sm flex-1"
               onChange={e => {
-                const next = [...options];
+                const next = [...local];
                 next[i] = e.target.value;
-                onChange(next);
+                setLocal(next); // local only while typing
               }}
+              onBlur={() => onSave(local)} // persist on blur
             />
             <Button
               type="button"
               variant="ghost"
               size="icon"
               className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
-              onClick={() => onChange(options.filter((_, idx) => idx !== i))}
+              onClick={() => commit(local.filter((_, idx) => idx !== i))}
             >
               <X className="h-3 w-3" />
             </Button>
@@ -97,7 +111,7 @@ function OptionsEditor({
           variant="ghost"
           size="sm"
           className="h-7 text-xs text-muted-foreground"
-          onClick={() => onChange([...options, ''])}
+          onClick={() => commit([...local, ''])}
         >
           <Plus className="h-3 w-3 mr-1" />
           Add option
@@ -133,6 +147,11 @@ export default function FieldEditor({
   const hasOptions = TYPES_WITH_OPTIONS.includes(field.fieldType);
   const isLayoutType = ['section_header', 'divider'].includes(field.fieldType);
   const isComplexType = ['coordinates_latlong', 'coordinates_utm', 'file_upload', 'repeating_group'].includes(field.fieldType);
+
+  const saveOptions = useCallback(
+    (opts: string[]) => onUpdateAndSave(field.id, { options: opts }),
+    [field.id, onUpdateAndSave],
+  );
 
   return (
     <div className="space-y-5">
@@ -200,24 +219,39 @@ export default function FieldEditor({
         </Select>
       </div>
 
+      {/* Options editor — shown immediately after Field Type for visibility */}
+      {hasOptions && (
+        <>
+          <Separator />
+          <OptionsEditor
+            key={field.id}
+            options={field.options ?? []}
+            onSave={saveOptions}
+          />
+        </>
+      )}
+
       {/* Flags — skip for layout types */}
       {!isLayoutType && (
-        <div className="space-y-2.5">
-          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Flags</Label>
-          {([
-            { key: 'isRequired', label: 'Required' },
-            { key: 'isHidden', label: 'Hidden' },
-            { key: 'isProtected', label: 'Admin Only (Protected)' },
-          ] as const).map(({ key, label }) => (
-            <div key={key} className="flex items-center justify-between">
-              <Label className="text-sm font-normal">{label}</Label>
-              <Switch
-                checked={!!field[key]}
-                onCheckedChange={v => onUpdateAndSave(field.id, { [key]: v })}
-              />
-            </div>
-          ))}
-        </div>
+        <>
+          <Separator />
+          <div className="space-y-2.5">
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Flags</Label>
+            {([
+              { key: 'isRequired', label: 'Required' },
+              { key: 'isHidden', label: 'Hidden' },
+              { key: 'isProtected', label: 'Admin Only (Protected)' },
+            ] as const).map(({ key, label }) => (
+              <div key={key} className="flex items-center justify-between">
+                <Label className="text-sm font-normal">{label}</Label>
+                <Switch
+                  checked={!!field[key]}
+                  onCheckedChange={v => onUpdateAndSave(field.id, { [key]: v })}
+                />
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {/* Placeholder + Help Text — only for simple text-like types */}
@@ -255,17 +289,6 @@ export default function FieldEditor({
             className="text-sm resize-none"
           />
         </div>
-      )}
-
-      {/* Options editor */}
-      {hasOptions && (
-        <>
-          <Separator />
-          <OptionsEditor
-            options={field.options ?? []}
-            onChange={opts => onUpdateAndSave(field.id, { options: opts })}
-          />
-        </>
       )}
 
       {/* Conditional Logic */}

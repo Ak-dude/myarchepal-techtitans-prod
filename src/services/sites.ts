@@ -17,6 +17,7 @@ import {
   CollectionReference
 } from 'firebase/firestore';
 import { db, storage } from '@/lib/firebase';
+import type { SubmissionStatus } from '@/types/siteSubmissions';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 // Site interface matching your Firestore document structure
@@ -36,13 +37,21 @@ export interface Site {
   period?: string;
   artifacts?: string[];
   images?: string[];
-  status: 'active' | 'inactive' | 'archived';
+  status: 'draft' | 'active' | 'inactive' | 'archived';
   createdAt?: Date | Timestamp;
   updatedAt?: Date | Timestamp;
   createdBy?: string;
   organizationId?: string; // Organization that owns this site
   visibility?: 'public' | 'private'; // Visibility setting (Pro/Enterprise orgs only)
   siteAdmins?: string[]; // User IDs who are admins of this site (can edit site and its artifacts)
+  // NC archaeology form fields (Task 3.2)
+  siteType?: string;           // Cemetery, Habitation, Rock Art, etc.
+  stateSiteNumber?: string;    // NC state site number e.g. "31-AB-123"
+  // Dynamic form template fields (Task 1.1)
+  linkedTemplateId?: string;
+  assignedConsultantId?: string;
+  assignedConsultantEmail?: string;
+  submissionStatus?: SubmissionStatus;
 }
 
 // Collection reference - with error handling

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { MapPin, Calendar, Users, FileText, Edit, Share2, Loader2, ChevronRight, Satellite, WifiOff, Globe, Lock, UserPlus, X, Shield } from "lucide-react";
+import { MapPin, Calendar, Users, FileText, Edit, Share2, Loader2, ChevronRight, Satellite, WifiOff, Globe, Lock, UserPlus, X, Shield, ClipboardList } from "lucide-react";
 import { ResponsiveLayout } from "@/components/ResponsiveLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { AccountButton } from "@/components/AccountButton";
@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { SitesService, Site } from "@/services/sites";
+import { SiteTemplatesService } from "@/services/siteTemplates";
+import type { SiteTemplate } from "@/types/siteTemplates";
 import { ArtifactsService, Artifact } from "@/services/artifacts";
 import { UserService } from "@/services/users";
 import { useAuth } from "@/hooks/use-auth";
@@ -29,7 +31,7 @@ const SiteDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { organization, isOrgAdmin, isSuperAdmin } = useUser();
+  const { organization, isOrgAdmin, isSuperAdmin, isMember } = useUser();
   const { isArchaeologist } = useArchaeologist();
   const { toast } = useToast();
   const { isOnline } = useNetworkStatus();
@@ -46,6 +48,8 @@ const SiteDetails = () => {
   const [usingCachedData, setUsingCachedData] = useState(false);
   const [networkChecked, setNetworkChecked] = useState(false);
   const [updatingVisibility, setUpdatingVisibility] = useState(false);
+
+  const [linkedTemplate, setLinkedTemplate] = useState<SiteTemplate | null>(null);
 
   // Site admin management state
   const [orgMembers, setOrgMembers] = useState<User[]>([]);
@@ -177,6 +181,17 @@ const SiteDetails = () => {
 
     fetchSiteArtifacts();
   }, [id, isOnline, networkChecked]);
+
+  // Load linked template name when site is ready
+  useEffect(() => {
+    if (site?.linkedTemplateId) {
+      SiteTemplatesService.getTemplate(site.linkedTemplateId)
+        .then(setLinkedTemplate)
+        .catch(console.error);
+    } else {
+      setLinkedTemplate(null);
+    }
+  }, [site?.linkedTemplateId]);
 
   // Fetch organization members for site admin management (org admins only)
   useEffect(() => {
@@ -728,6 +743,128 @@ const SiteDetails = () => {
               )}
             </CardContent>
           </Card>
+
+          {/* Form Assignment — ORG_ADMIN only, Pro/Enterprise orgs */}
+          {isOrgAdmin && isProOrg && site.organizationId === organization?.id && isOnline && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <ClipboardList className="w-5 h-5" />
+                  Form Assignment
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">Linked Template</span>
+                  <span className={linkedTemplate ? 'font-medium' : 'italic text-muted-foreground'}>
+                    {linkedTemplate ? linkedTemplate.name : 'None'}
+                  </span>
+                </div>
+                {site.assignedConsultantEmail && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">Assigned To</span>
+                    <span className="text-blue-600 dark:text-blue-400">{site.assignedConsultantEmail}</span>
+                  </div>
+                )}
+                {site.submissionStatus && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">Form Status</span>
+                    <span className="capitalize">{site.submissionStatus.replace('_', ' ')}</span>
+                  </div>
+                )}
+
+                {/* Fill Form — shown when THIS admin is the one assigned */}
+                {site.linkedTemplateId && user && site.assignedConsultantId === user.uid &&
+                  site.submissionStatus !== 'submitted' && site.submissionStatus !== 'reviewed' && (
+                  <Button
+                    className="w-full"
+                    onClick={() => navigate(`/form/${site.id}`)}
+                  >
+                    <ClipboardList className="w-4 h-4 mr-2" />
+                    {site.submissionStatus === 'in_progress' ? 'Continue Form' : 'Fill Out Form'}
+                  </Button>
+                )}
+
+                {/* Submitted state */}
+                {site.assignedConsultantId === user?.uid &&
+                  (site.submissionStatus === 'submitted' || site.submissionStatus === 'reviewed') && (
+                  <p className="text-sm text-center text-muted-foreground py-1">
+                    Form has been submitted.
+                  </p>
+                )}
+
+                {site.linkedTemplateId && (
+                  <Button
+                    className="w-full"
+                    variant="outline"
+                    onClick={() => navigate(`/assign-form/${site.id}`)}
+                  >
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    {site.assignedConsultantId ? 'Reassign to Another Member' : 'Assign to a Team Member'}
+                  </Button>
+                )}
+                {!site.linkedTemplateId && (
+                  <p className="text-xs text-muted-foreground">
+                    Link a template to this site from the{' '}
+                    <button
+                      className="underline"
+                      onClick={() => navigate(`/edit-site/${site.id}`)}
+                    >
+                      edit page
+                    </button>{' '}
+                    to enable form assignment.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Fill Form CTA — MEMBER assigned to this site */}
+          {isMember && !isOrgAdmin && user && site.assignedConsultantId === user.uid && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <ClipboardList className="w-5 h-5" />
+                  Assigned Form
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {linkedTemplate && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">Template</span>
+                    <span className="font-medium">{linkedTemplate.name}</span>
+                  </div>
+                )}
+                {site.submissionStatus && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">Status</span>
+                    <span className={
+                      site.submissionStatus === 'submitted' || site.submissionStatus === 'reviewed'
+                        ? 'text-green-600 dark:text-green-400 font-medium capitalize'
+                        : site.submissionStatus === 'in_progress'
+                        ? 'text-blue-600 dark:text-blue-400 font-medium capitalize'
+                        : 'text-muted-foreground capitalize'
+                    }>
+                      {site.submissionStatus.replace('_', ' ')}
+                    </span>
+                  </div>
+                )}
+                {site.submissionStatus !== 'submitted' && site.submissionStatus !== 'reviewed' ? (
+                  <Button
+                    className="w-full"
+                    onClick={() => navigate(`/form/${site.id}`)}
+                  >
+                    <ClipboardList className="w-4 h-4 mr-2" />
+                    {site.submissionStatus === 'in_progress' ? 'Continue Form' : 'Fill Form'}
+                  </Button>
+                ) : (
+                  <p className="text-sm text-center text-muted-foreground py-1">
+                    This form has been submitted.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Site Admin Management - Only for Org Admins of Pro/Enterprise orgs */}
           {isOrgAdmin && isProOrg && site.organizationId === organization?.id && isOnline && (

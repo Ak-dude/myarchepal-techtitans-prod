@@ -11,7 +11,6 @@ import {
   User,
   LogIn,
   ChevronDown,
-  Users,
   Info,
   Mail,
   Settings,
@@ -21,6 +20,8 @@ import {
   MessageSquare,
   Building2,
   Shield,
+  FileText,
+  ClipboardList,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useState } from "react";
@@ -72,7 +73,7 @@ export const SideNav = () => {
   const location = useLocation();
   const { isAuthenticated, logout } = useAuth();
   const { isArchaeologist } = useArchaeologist();
-  const { isSuperAdmin, isOrgAdmin, isAdmin } = useUser();
+  const { isSuperAdmin, isAdmin, isMember } = useUser();
   const [isExploreOpen, setIsExploreOpen] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isGiftShopOpen, setIsGiftShopOpen] = useState(false);
@@ -84,7 +85,7 @@ export const SideNav = () => {
   const isExploreActive = exploreItems.some(item => isActive(item.path));
   const isGiftShopActive = giftShopItems.some(item => isActive(item.path));
   const isAccountActive = accountItems.some(item => isActive(item.path));
-  const isAdminActive = isActive('/admin') || isActive('/org-dashboard');
+  const isAdminActive = isActive('/admin') || isActive('/org-dashboard') || location.pathname.startsWith('/templates') || location.pathname.startsWith('/admin-assignments') || location.pathname.startsWith('/assign-form');
 
   const handleLogout = async () => {
     try {
@@ -229,6 +230,30 @@ export const SideNav = () => {
                 <Building2 className="w-4 h-4" />
                 Organization
               </button>
+              {/* Form Templates */}
+              <button
+                onClick={() => navigate('/templates')}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 pl-12 text-sm font-medium rounded-lg transition-colors ${
+                  location.pathname.startsWith('/templates')
+                    ? "text-primary bg-primary/5"
+                    : "text-slate-600 dark:text-slate-400 hover:text-foreground hover:bg-muted/50"
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                Form Templates
+              </button>
+              {/* Site Assignments */}
+              <button
+                onClick={() => navigate('/admin-assignments')}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 pl-12 text-sm font-medium rounded-lg transition-colors ${
+                  location.pathname.startsWith('/admin-assignments') || location.pathname.startsWith('/assign-form')
+                    ? "text-primary bg-primary/5"
+                    : "text-slate-600 dark:text-slate-400 hover:text-foreground hover:bg-muted/50"
+                }`}
+              >
+                <ClipboardList className="w-4 h-4" />
+                Site Assignments
+              </button>
               {/* Super Admin Dashboard - only for super admins */}
               {isSuperAdmin && (
                 <button
@@ -246,6 +271,7 @@ export const SideNav = () => {
             </CollapsibleContent>
           </Collapsible>
         )}
+
 
         {/* Gift Shop Collapsible */}
         <Collapsible open={isGiftShopOpen} onOpenChange={setIsGiftShopOpen} className="mb-1">
@@ -281,6 +307,21 @@ export const SideNav = () => {
             ))}
           </CollapsibleContent>
         </Collapsible>
+
+        {/* My Assignments — MEMBER role only (not shown to admins) */}
+        {isAuthenticated && isMember && !isAdmin && (
+          <button
+            onClick={() => navigate('/my-assignments')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 mb-1 ${
+              location.pathname.startsWith('/my-assignments') || location.pathname.startsWith('/form/')
+                ? 'bg-primary/10 text-primary'
+                : 'text-slate-700 dark:text-slate-300 hover:text-foreground hover:bg-muted/50'
+            }`}
+          >
+            <ClipboardList className={`w-5 h-5 ${location.pathname.startsWith('/my-assignments') || location.pathname.startsWith('/form/') ? 'text-primary' : ''}`} />
+            <span>My Assignments</span>
+          </button>
+        )}
 
         {/* Account Collapsible - Only for Authenticated Users */}
         {isAuthenticated && (

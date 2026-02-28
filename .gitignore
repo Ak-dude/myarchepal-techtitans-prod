@@ -63,3 +63,11 @@ backend/.env.local
 backend/.pytest_cache/
 backend/.coverage
 backend/htmlcov/
+
+# FastAPI serverless (api/)
+api/.env
+api/.env.local
+api/__pycache__/
+api/**/__pycache__/
+api/*.py[cod]
+api/**/*.py[cod]

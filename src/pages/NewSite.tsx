@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { MapPin, FileText, Save, Loader2, Upload, Image as ImageIcon, Mic, MicOff, Globe, Lock, AlertCircle } from "lucide-react";
-import { useKeyboard } from "@/hooks/use-keyboard";
+import {
+  Upload, Image as ImageIcon, ChevronRight, ChevronLeft,
+  Loader2, LayoutTemplate, CheckCircle2, FileText, X,
+} from "lucide-react";
+import { toast } from "sonner";
+
 import { ResponsiveLayout } from "@/components/ResponsiveLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { AccountButton } from "@/components/AccountButton";
@@ -9,752 +13,427 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useToast } from "@/components/ui/use-toast";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+
 import { SitesService } from "@/services/sites";
-import { Timestamp } from "firebase/firestore";
+import { SiteTemplatesService } from "@/services/siteTemplates";
 import { useAuth } from "@/hooks/use-auth";
 import { useUser } from "@/hooks/use-user";
-import { useArchaeologist } from "@/hooks/use-archaeologist";
-import { DEFAULT_ORGANIZATION_ID } from "@/types/organization";
-import { Switch } from "@/components/ui/switch";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import type { SiteTemplate } from "@/types/siteTemplates";
 
-// Default coordinates for Raleigh, North Carolina
-const DEFAULT_LOCATION = {
-  latitude: 35.7796,
-  longitude: -78.6382
-};
+// ---------------------------------------------------------------------------
+// Step indicator
+// ---------------------------------------------------------------------------
 
-const NewSite = () => {
+function StepIndicator({ step }: { step: 0 | 1 }) {
+  const steps = ['Basic Info', 'Choose Template'];
+  return (
+    <div className="flex items-center gap-2">
+      {steps.map((label, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <div className={`flex items-center gap-1.5 text-sm font-medium transition-colors ${
+            i === step ? 'text-primary' : i < step ? 'text-muted-foreground' : 'text-muted-foreground/50'
+          }`}>
+            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors ${
+              i < step
+                ? 'bg-primary border-primary text-primary-foreground'
+                : i === step
+                  ? 'border-primary text-primary'
+                  : 'border-muted-foreground/30 text-muted-foreground/50'
+            }`}>
+              {i < step ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
+            </div>
+            {label}
+          </div>
+          {i < steps.length - 1 && (
+            <div className={`h-px w-8 transition-colors ${i < step ? 'bg-primary' : 'bg-muted-foreground/20'}`} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Template card
+// ---------------------------------------------------------------------------
+
+function TemplateCard({
+  template,
+  selected,
+  onSelect,
+}: {
+  template: SiteTemplate;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`text-left w-full rounded-xl border-2 p-4 transition-all ${
+        selected
+          ? 'border-primary bg-primary/5 shadow-sm'
+          : 'border-border hover:border-primary/40 hover:bg-muted/30'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm truncate">{template.name}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {template.fieldCount ?? 0} field{(template.fieldCount ?? 0) !== 1 ? 's' : ''}
+          </p>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {selected && <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />}
+          {template.siteType && (
+            <Badge variant="secondary" className="text-xs">{template.siteType}</Badge>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NewSite
+// ---------------------------------------------------------------------------
+
+export default function NewSite() {
   const navigate = useNavigate();
-  const { toast } = useToast();
   const { user } = useAuth();
   const { organization, isOrgAdmin, isSuperAdmin } = useUser();
-  const { isArchaeologist, loading: archaeologistLoading, canCreate: baseCanCreate } = useArchaeologist();
-  const { hideKeyboard } = useKeyboard();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [loading, setLoading] = useState(false);
+
+  const isAdmin = isOrgAdmin || isSuperAdmin;
+
+  // ---- Step state ----------------------------------------------------------
+  const [step, setStep] = useState<0 | 1>(0);
+  const [saving, setSaving] = useState(false);
+
+  // ---- Step 1 state --------------------------------------------------------
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [locationLoading, setLocationLoading] = useState(true);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recognition, setRecognition] = useState<any>(null);
-  const [visibility, setVisibility] = useState<'public' | 'private'>('private');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Check if user is in a Pro/Enterprise organization (non-default)
-  const isProOrg = organization &&
-    organization.id !== DEFAULT_ORGANIZATION_ID &&
-    (organization.subscriptionLevel === 'Pro' || organization.subscriptionLevel === 'Enterprise');
+  // ---- Step 2 state --------------------------------------------------------
+  const [templates, setTemplates] = useState<SiteTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
-  // For Pro/Enterprise orgs: Only org admins can create new sites
-  // For Free/Default orgs: Any archaeologist can create sites (personal use)
-  const canCreateInOrg = isProOrg ? (isOrgAdmin || isSuperAdmin) : true;
-  const canCreate = baseCanCreate && canCreateInOrg;
-
-  // Handle tap outside inputs to dismiss keyboard
+  // Load published templates when reaching step 2
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    if (step !== 1 || !organization?.id) return;
+    setTemplatesLoading(true);
+    SiteTemplatesService.listTemplates(organization.id)
+      .then(all => setTemplates(all.filter(t => t.status === 'published')))
+      .catch(() => toast.error('Failed to load templates.'))
+      .finally(() => setTemplatesLoading(false));
+  }, [step, organization?.id]);
 
-    const handleTap = (e: TouchEvent | MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const interactiveElements = ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A', 'LABEL'];
-      if (interactiveElements.includes(target.tagName)) return;
-      if (target.closest('button') || target.closest('a') || target.closest('label')) return;
-      hideKeyboard();
-    };
-
-    container.addEventListener('touchstart', handleTap, { passive: true });
-    return () => container.removeEventListener('touchstart', handleTap);
-  }, [hideKeyboard]);
-
-  // Form state
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    researchAnalysis: "",
-    location: {
-      latitude: "",
-      longitude: ""
-    },
-    period: "",
-    status: "active",
-    dateDiscovered: new Date().toISOString().split('T')[0],
-    notes: ""
-  });
-
-  // Get user's location on component mount
-  useEffect(() => {
-    const getUserLocation = () => {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            setFormData(prev => ({
-              ...prev,
-              location: {
-                latitude: position.coords.latitude.toString(),
-                longitude: position.coords.longitude.toString()
-              }
-            }));
-            setLocationLoading(false);
-            console.log('✅ User location obtained:', position.coords.latitude, position.coords.longitude);
-            toast({
-              title: "Location Detected",
-              description: "Your current location has been set",
-            });
-          },
-          (error) => {
-            console.warn('⚠️ Location permission denied or unavailable:', error.message);
-            console.log('🏛️ Using default location: Raleigh, NC');
-            setFormData(prev => ({
-              ...prev,
-              location: {
-                latitude: DEFAULT_LOCATION.latitude.toString(),
-                longitude: DEFAULT_LOCATION.longitude.toString()
-              }
-            }));
-            setLocationLoading(false);
-            toast({
-              title: "Default Location Set",
-              description: "Using Raleigh, NC as default location",
-            });
-          },
-          {
-            enableHighAccuracy: false,
-            timeout: 5000,
-            maximumAge: 0
-          }
-        );
-      } else {
-        console.warn('⚠️ Geolocation is not supported by this browser');
-        console.log('🏛️ Using default location: Raleigh, NC');
-        setFormData(prev => ({
-          ...prev,
-          location: {
-            latitude: DEFAULT_LOCATION.latitude.toString(),
-            longitude: DEFAULT_LOCATION.longitude.toString()
-          }
-        }));
-        setLocationLoading(false);
-      }
-    };
-
-    getUserLocation();
-  }, [toast]);
-
-  // Initialize speech recognition
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-      if (SpeechRecognition) {
-        const recognitionInstance = new SpeechRecognition();
-        recognitionInstance.continuous = true;
-        recognitionInstance.interimResults = true;
-        recognitionInstance.lang = 'en-US';
-
-        recognitionInstance.onresult = (event: any) => {
-          let interimTranscript = '';
-          let finalTranscript = '';
-
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              finalTranscript += transcript + ' ';
-            } else {
-              interimTranscript += transcript;
-            }
-          }
-
-          if (finalTranscript) {
-            setFormData(prev => ({
-              ...prev,
-              notes: prev.notes + finalTranscript
-            }));
-          }
-        };
-
-        recognitionInstance.onerror = (event: any) => {
-          console.error('Speech recognition error:', event.error);
-          setIsRecording(false);
-          toast({
-            title: "Speech Recognition Error",
-            description: "Unable to recognize speech. Please try again.",
-            variant: "destructive"
-          });
-        };
-
-        recognitionInstance.onend = () => {
-          setIsRecording(false);
-        };
-
-        setRecognition(recognitionInstance);
-      }
-    }
-  }, [toast]);
-
-  const toggleRecording = () => {
-    if (!recognition) {
-      toast({
-        title: "Speech Recognition Not Available",
-        description: "Your browser doesn't support speech recognition. Please use Chrome, Edge, or Safari.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (isRecording) {
-      recognition.stop();
-      setIsRecording(false);
-    } else {
-      try {
-        recognition.start();
-        setIsRecording(true);
-        toast({
-          title: "Recording Started",
-          description: "Speak now to add notes...",
-        });
-      } catch (error) {
-        console.error('Error starting recognition:', error);
-        toast({
-          title: "Error",
-          description: "Failed to start recording. Please try again.",
-          variant: "destructive"
-        });
-      }
-    }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    if (name.startsWith("location.")) {
-      const locationField = name.split(".")[1];
-      setFormData(prev => ({
-        ...prev,
-        location: {
-          ...prev.location,
-          [locationField]: value
-        }
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: value
-      }));
-    }
-  };
-
-  const handleSelectChange = (value: string, field: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
+  // ---- Image handling ------------------------------------------------------
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // Check file size (limit to 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        toast({
-          title: "File too large",
-          description: "Please select an image smaller than 5MB",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Check file type
-      if (!file.type.startsWith('image/')) {
-        toast({
-          title: "Invalid file type",
-          description: "Please select an image file",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      setSelectedImage(file);
-
-      // Create preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be smaller than 5 MB.'); return; }
+    if (!file.type.startsWith('image/')) { toast.error('Please select an image file.'); return; }
+    setSelectedImage(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
   };
 
-  const removeImage = () => {
-    setSelectedImage(null);
-    setImagePreview(null);
+  const removeImage = () => { setSelectedImage(null); setImagePreview(null); };
+
+  // ---- Navigation ----------------------------------------------------------
+  const handleNext = () => {
+    if (!name.trim()) { toast.error('Site name is required.'); return; }
+    setStep(1);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // Debug: Log user information
-    console.log('🏛️ Creating site - User info:', {
-      user: user,
-      uid: user?.uid,
-      email: user?.email,
-      isAuthenticated: !!user
-    });
-
-    // Basic validation
-    if (!formData.name) {
-      toast({
-        title: "Validation Error",
-        description: "Please provide a site name",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (!user) {
-      toast({
-        title: "Authentication Error",
-        description: "You must be signed in to create a site",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setLoading(true);
-
+  // ---- Save ----------------------------------------------------------------
+  const handleCreate = async () => {
+    if (!user || !name.trim()) return;
+    setSaving(true);
     try {
-      const siteData = {
-        name: formData.name,
-        description: formData.description || "",
-        researchAnalysis: formData.researchAnalysis || "",
-        location: {
-          latitude: formData.location.latitude ? parseFloat(formData.location.latitude) : DEFAULT_LOCATION.latitude,
-          longitude: formData.location.longitude ? parseFloat(formData.location.longitude) : DEFAULT_LOCATION.longitude
-        },
-        period: formData.period || "",
-        status: formData.status as "active" | "inactive" | "archived",
-        dateDiscovered: Timestamp.fromDate(new Date(formData.dateDiscovered)),
+      const siteId = await SitesService.createSite({
+        name: name.trim(),
+        description: description.trim(),
+        status: 'draft',
+        location: { latitude: 0, longitude: 0 },
+        createdBy: user.uid,
+        organizationId: organization?.id,
+        visibility: 'private',
         artifacts: [],
         images: [],
-        createdBy: user?.uid || "anonymous",
-        notes: formData.notes || "",
-        organizationId: organization?.id, // Set organizationId from user's organization
-        visibility: isProOrg ? visibility : 'private' // Only Pro/Enterprise orgs can set visibility
-      };
+        ...(selectedTemplateId ? { linkedTemplateId: selectedTemplateId } : {}),
+      });
 
-      const siteId = await SitesService.createSite(siteData);
-
-      // Upload image if selected
-      if (selectedImage && siteId) {
+      if (selectedImage) {
         try {
-          const imageUrl = await SitesService.uploadSiteImage(siteId, selectedImage);
-          await SitesService.updateSiteImages(siteId, [imageUrl]);
-        } catch (imageError) {
-          console.error("Error uploading image:", imageError);
-          toast({
-            title: "Warning",
-            description: "Site created but image upload failed",
-            variant: "destructive"
-          });
+          const url = await SitesService.uploadSiteImage(siteId, selectedImage);
+          await SitesService.updateSiteImages(siteId, [url]);
+        } catch {
+          toast.warning('Site created, but image upload failed.');
         }
       }
 
-      toast({
-        title: "Success!",
-        description: "Archaeological site has been added successfully",
-      });
-
-      // Navigate to site lists after successful creation
-      setTimeout(() => {
-        navigate("/site-lists");
-      }, 1500);
-
-    } catch (error) {
-      console.error("Error creating site:", error);
-      toast({
-        title: "Error",
-        description: "Failed to create site. Please check your Firebase configuration.",
-        variant: "destructive"
-      });
+      toast.success('Site created as draft!');
+      navigate(`/site/${siteId}`);
+    } catch (err: any) {
+      toast.error(err.message ?? 'Failed to create site. Please try again.');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
+
+  // ---- Permission guard ----------------------------------------------------
+  if (!isAdmin) {
+    return (
+      <ResponsiveLayout>
+        <header className="bg-card/95 backdrop-blur-lg px-4 py-4 border-b border-border sticky top-0 z-40">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <PageHeader showLogo={false} />
+            <AccountButton />
+          </div>
+        </header>
+        <div className="flex items-center justify-center min-h-[60vh] p-6">
+          <div className="text-center space-y-3 max-w-sm">
+            <p className="font-semibold">Access Restricted</p>
+            <p className="text-sm text-muted-foreground">
+              Only organization administrators can create new sites.
+            </p>
+            <Button variant="outline" onClick={() => navigate('/site-lists')}>
+              View Sites
+            </Button>
+          </div>
+        </div>
+      </ResponsiveLayout>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <ResponsiveLayout>
-      <div ref={containerRef}>
       {/* Header */}
-      <header className="bg-card/95 backdrop-blur-lg px-4 py-4 sm:px-6 lg:px-8 border-b border-border sticky top-0 z-40">
+      <header className="bg-card/95 backdrop-blur-lg px-4 py-4 border-b border-border sticky top-0 z-40">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <PageHeader showLogo={false} />
           <AccountButton />
         </div>
       </header>
 
-      {/* Auth & Archaeologist Status */}
-      <div className="p-4 lg:p-6 bg-muted/50 mx-auto max-w-7xl">
-          <div className="text-sm space-y-1">
-            <div>
-              <strong>Auth Status:</strong> {user ? `✅ Signed in as ${user.email}` : '❌ Not signed in'}
-            </div>
-            <div>
-              <strong>Archaeologist Status:</strong> {
-                archaeologistLoading ? '⏳ Checking...' :
-                isArchaeologist ? '✅ Verified Archaeologist' : '❌ Not an archaeologist'
-              }
-            </div>
-            <div>
-              <strong>Can Create:</strong> {canCreate ? '✅ Yes' : '❌ No'}
-            </div>
-          </div>
+      <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+
+        {/* Page title + step indicator */}
+        <div className="space-y-3">
+          <h1 className="text-2xl font-bold">New Archaeological Site</h1>
+          <StepIndicator step={step} />
         </div>
 
-        {/* Show message for non-archaeologists or restricted Pro org members */}
-        {!canCreate && (
-          <div className="p-4">
+        {/* ------------------------------------------------------------------ */}
+        {/* Step 1 — Basic Info                                                  */}
+        {/* ------------------------------------------------------------------ */}
+        {step === 0 && (
+          <div className="space-y-5">
+
+            {/* Image upload */}
             <Card>
-              <CardContent className="pt-6 text-center">
-                {/* Pro org member restriction message */}
-                {isProOrg && !canCreateInOrg ? (
-                  <Alert variant="default" className="mb-4 text-left">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Site Creation Restricted</AlertTitle>
-                    <AlertDescription>
-                      In Pro/Enterprise organizations, only organization administrators can create new sites.
-                      As a member, you can edit sites where you've been assigned as a site admin.
-                      Contact your organization admin to create new sites or to be added as a site admin.
-                    </AlertDescription>
-                  </Alert>
+              <CardContent className="pt-5">
+                {imagePreview ? (
+                  <div className="relative">
+                    <img
+                      src={imagePreview}
+                      alt="Site preview"
+                      className="w-full max-h-56 object-cover rounded-lg"
+                    />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-2 right-2 h-7 w-7"
+                      onClick={removeImage}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 ) : (
-                  <p className="text-muted-foreground mb-4">
-                    {!user ? 'Please sign in as an archaeologist to create archaeological sites.' :
-                     !isArchaeologist ? 'Only verified archaeologists can create sites.' :
-                     'Loading...'}
-                  </p>
+                  <label htmlFor="image-upload" className="cursor-pointer block">
+                    <div className="flex flex-col items-center justify-center h-44 bg-muted rounded-lg hover:bg-muted/70 transition-colors">
+                      <ImageIcon className="h-10 w-10 text-muted-foreground mb-2" />
+                      <p className="text-sm text-muted-foreground">Click to add site image</p>
+                      <p className="text-xs text-muted-foreground mt-1">JPG, PNG, GIF — max 5 MB</p>
+                    </div>
+                  </label>
                 )}
-                {!user && (
+                <input
+                  ref={fileInputRef}
+                  id="image-upload"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageSelect}
+                />
+                {!imagePreview && (
                   <Button
-                    onClick={() => navigate('/authentication/sign-in')}
+                    type="button"
                     variant="outline"
+                    size="sm"
+                    className="w-full mt-3"
+                    onClick={() => fileInputRef.current?.click()}
                   >
-                    Sign In as Archaeologist
-                  </Button>
-                )}
-                {isProOrg && !canCreateInOrg && (
-                  <Button
-                    onClick={() => navigate('/site-lists')}
-                    variant="outline"
-                  >
-                    View Existing Sites
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Image
                   </Button>
                 )}
               </CardContent>
             </Card>
+
+            {/* Name + description */}
+            <Card>
+              <CardContent className="pt-5 space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="name">
+                    Site Name <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="name"
+                    placeholder="e.g. Crowders Mountain Rockshelter"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleNext(); }}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="description">Description <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Brief overview of the site — location, features, significance…"
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    rows={4}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Next button */}
+            <Button className="w-full" onClick={handleNext}>
+              Next — Choose Template
+              <ChevronRight className="h-4 w-4 ml-1.5" />
+            </Button>
           </div>
         )}
 
-        {/* Form - Only show if user can create */}
-        {canCreate && (
-        <form onSubmit={handleSubmit} className="p-4 lg:p-6 space-y-4 mx-auto max-w-7xl">
-          {/* Image Upload Section - Moved to top */}
-          <Card className="p-6 border-border">
-            {imagePreview ? (
-              <div className="relative flex justify-center">
-                <img
-                  src={imagePreview}
-                  alt="Site preview"
-                  className="max-w-full max-h-64 object-contain rounded-lg mb-4"
-                />
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  className="absolute top-2 right-2"
-                  onClick={removeImage}
-                >
-                  Remove
-                </Button>
+        {/* ------------------------------------------------------------------ */}
+        {/* Step 2 — Template selection                                          */}
+        {/* ------------------------------------------------------------------ */}
+        {step === 1 && (
+          <div className="space-y-5">
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">
+                Link a published form template to this site. Consultants will fill it in when assigned.
+                You can also skip and link a template later.
+              </p>
+            </div>
+
+            {templatesLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-20 rounded-xl" />)}
               </div>
+            ) : templates.length === 0 ? (
+              <Card>
+                <CardContent className="py-10 flex flex-col items-center text-center gap-3">
+                  <LayoutTemplate className="h-8 w-8 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">
+                    No published templates yet.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate('/templates')}
+                  >
+                    Go to Templates
+                  </Button>
+                </CardContent>
+              </Card>
             ) : (
-              <label htmlFor="image-upload" className="cursor-pointer">
-                <div className="flex items-center justify-center h-48 bg-muted rounded-lg mb-4 hover:bg-muted/80 transition-colors">
-                  <div className="text-center">
-                    <ImageIcon className="w-12 h-12 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">Click to add site image</p>
-                    <p className="text-xs text-muted-foreground mt-1">Max 5MB (JPG, PNG, GIF)</p>
-                  </div>
-                </div>
-              </label>
-            )}
-            <input
-              id="image-upload"
-              type="file"
-              accept="image/*"
-              onChange={handleImageSelect}
-              className="hidden"
-            />
-            <label htmlFor="image-upload">
-              <Button variant="outline" className="w-full" size="sm" type="button" asChild>
-                <span>
-                  <Upload className="w-4 h-4 mr-2" />
-                  {selectedImage ? 'Change Image' : 'Upload Image'}
-                </span>
-              </Button>
-            </label>
-          </Card>
-
-          {/* Basic Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                Basic Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="name">Site Name *</Label>
-                <Input
-                  id="name"
-                  name="name"
-                  placeholder="e.g., Ancient Roman Villa"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="description">Description (Optional)</Label>
-                <Textarea
-                  id="description"
-                  name="description"
-                  placeholder="Provide a detailed description of the archaeological site..."
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  rows={4}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="researchAnalysis">Research and Analysis (Optional)</Label>
-                <Textarea
-                  id="researchAnalysis"
-                  name="researchAnalysis"
-                  placeholder="Provide research findings, analysis, and interpretations..."
-                  value={formData.researchAnalysis}
-                  onChange={handleInputChange}
-                  rows={4}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="period">Historical Period (Optional)</Label>
-                <Input
-                  id="period"
-                  name="period"
-                  placeholder="e.g., Roman Empire, Bronze Age"
-                  value={formData.period}
-                  onChange={handleInputChange}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="dateDiscovered">Date Discovered (Optional)</Label>
-                <Input
-                  id="dateDiscovered"
-                  name="dateDiscovered"
-                  type="date"
-                  value={formData.dateDiscovered}
-                  onChange={handleInputChange}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="status">Status (Optional)</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) => handleSelectChange(value, "status")}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
-                    <SelectItem value="archived">Archived</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Visibility Toggle - Only for Pro/Enterprise organizations */}
-              {isProOrg && (
-                <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-muted/30">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="visibility" className="text-foreground flex items-center gap-2">
-                      {visibility === 'public' ? (
-                        <Globe className="w-4 h-4 text-green-600" />
-                      ) : (
-                        <Lock className="w-4 h-4 text-amber-600" />
-                      )}
-                      Visibility
-                    </Label>
-                    <p className="text-xs text-muted-foreground">
-                      {visibility === 'public'
-                        ? 'This site will be visible to all users'
-                        : 'This site will only be visible to your organization members'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-sm ${visibility === 'private' ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                      Private
-                    </span>
-                    <Switch
-                      id="visibility"
-                      checked={visibility === 'public'}
-                      onCheckedChange={(checked) => setVisibility(checked ? 'public' : 'private')}
-                    />
-                    <span className={`text-sm ${visibility === 'public' ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                      Public
-                    </span>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Field Notes */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  Field Notes (Speech-to-Text)
-                </div>
-                <Button
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* No template option */}
+                <button
                   type="button"
-                  variant={isRecording ? "destructive" : "outline"}
-                  size="sm"
-                  onClick={toggleRecording}
-                  className="gap-2"
+                  onClick={() => setSelectedTemplateId(null)}
+                  className={`text-left rounded-xl border-2 p-4 transition-all ${
+                    selectedTemplateId === null
+                      ? 'border-primary bg-primary/5 shadow-sm'
+                      : 'border-border hover:border-primary/40 hover:bg-muted/30'
+                  }`}
                 >
-                  {isRecording ? (
-                    <>
-                      <MicOff className="w-4 h-4" />
-                      Stop
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="w-4 h-4" />
-                      Record
-                    </>
-                  )}
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Textarea
-                  id="notes"
-                  name="notes"
-                  placeholder="Field notes, site observations, initial impressions... (You can type or use voice recording)"
-                  value={formData.notes}
-                  onChange={handleInputChange}
-                  rows={6}
-                />
-                {isRecording && (
-                  <div className="flex items-center gap-2 text-sm text-destructive mt-2">
-                    <div className="w-2 h-2 bg-destructive rounded-full animate-pulse" />
-                    <span>Recording in progress... Speak now</span>
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="font-semibold text-sm">No Template</p>
+                      <p className="text-xs text-muted-foreground">Link one later in Site Details</p>
+                    </div>
+                    {selectedTemplateId === null && (
+                      <CheckCircle2 className="h-4 w-4 text-primary ml-auto shrink-0" />
+                    )}
                   </div>
-                )}
-                <p className="text-xs text-muted-foreground mt-2">
-                  Use the microphone button to record voice notes, or type manually. Perfect for capturing site observations while in the field.
-                </p>
+                </button>
+
+                {templates.map(t => (
+                  <TemplateCard
+                    key={t.id}
+                    template={t}
+                    selected={selectedTemplateId === t.id}
+                    onSelect={() => setSelectedTemplateId(t.id)}
+                  />
+                ))}
               </div>
-            </CardContent>
-          </Card>
+            )}
 
-          {/* Location Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <MapPin className="w-4 h-4" />
-                Location Coordinates
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {locationLoading ? (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground mr-2" />
-                  <span className="text-sm text-muted-foreground">Detecting location...</span>
-                </div>
-              ) : (
-                <>
-                  <div className="text-sm text-muted-foreground">
-                    Location has been automatically detected. You can modify the coordinates below if needed.
-                  </div>
+            {/* Selected template summary */}
+            {selectedTemplateId && (
+              <div className="flex items-center gap-2 text-sm text-primary">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>
+                  <strong>{templates.find(t => t.id === selectedTemplateId)?.name}</strong> will be linked to this site.
+                </span>
+              </div>
+            )}
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="location.latitude">Latitude</Label>
-                      <Input
-                        id="location.latitude"
-                        name="location.latitude"
-                        type="number"
-                        step="0.000001"
-                        placeholder="35.7796"
-                        value={formData.location.latitude}
-                        onChange={handleInputChange}
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="location.longitude">Longitude</Label>
-                      <Input
-                        id="location.longitude"
-                        name="location.longitude"
-                        type="number"
-                        step="0.000001"
-                        placeholder="-78.6382"
-                        value={formData.location.longitude}
-                        onChange={handleInputChange}
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Submit Button */}
-          <div className="pt-4">
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Creating Site...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4 mr-2" />
-                  Save Archaeological Site
-                </>
-              )}
-            </Button>
+            {/* Action buttons */}
+            <div className="flex gap-3 pt-1">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setStep(0)}
+                disabled={saving}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1.5" />
+                Back
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={handleCreate}
+                disabled={saving}
+              >
+                {saving ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating…</>
+                ) : (
+                  'Create Site'
+                )}
+              </Button>
+            </div>
           </div>
-        </form>
         )}
       </div>
     </ResponsiveLayout>
   );
-};
-
-export default NewSite;
+}

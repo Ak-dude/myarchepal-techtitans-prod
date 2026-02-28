@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+openai
+pdfplumber
+python-multipart
+firebase-admin
+aiosmtplib
+python-dotenv
+reportlab

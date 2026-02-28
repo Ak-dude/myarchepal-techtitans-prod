@@ -272,6 +272,53 @@ service cloud.firestore {
       allow delete: if request.auth != null && (resource.data.userId == request.auth.uid || isRoomMember(resource.data.roomId));
     }
 
+    // ========================================================================
+    // SITE TEMPLATES — ORG_ADMIN manages, MEMBER reads published only
+    // ========================================================================
+
+    match /siteTemplates/{templateId} {
+      // ORG_ADMIN (or SUPER_ADMIN) in the same org can read all; MEMBER reads published
+      allow read: if canAccessOrg(resource.data.orgId)
+                   && (isAnyAdmin() || resource.data.status == 'published');
+      // Only ORG_ADMIN or SUPER_ADMIN can create/edit/delete
+      allow create: if request.auth != null && isAnyAdmin()
+                    && request.resource.data.orgId == getUserData().organizationId;
+      allow update, delete: if request.auth != null && isAnyAdmin()
+                    && resource.data.orgId == getUserData().organizationId;
+
+      match /fields/{fieldId} {
+        allow read: if canAccessOrg(get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId);
+        allow write: if request.auth != null && isAnyAdmin();
+      }
+      match /sections/{sectionId} {
+        allow read: if canAccessOrg(get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId);
+        allow write: if request.auth != null && isAnyAdmin();
+      }
+    }
+
+    // ========================================================================
+    // SITE SUBMISSIONS — subcollection of existing Sites collection
+    // ========================================================================
+
+    match /Sites/{siteId}/submissions/{submissionId} {
+      // ORG_ADMIN reads all submissions for their org's sites
+      // MEMBER reads only their own submission
+      allow read: if request.auth != null
+                   && (isAnyAdmin()
+                       || (getUserData().role == 'MEMBER'
+                           && resource.data.consultantId == request.auth.uid));
+      // Assigned consultant (MEMBER or ORG_ADMIN) can create a submission
+      allow create: if request.auth != null
+                     && (getUserData().role == 'MEMBER' || isAnyAdmin())
+                     && request.resource.data.consultantId == request.auth.uid;
+      // MEMBER can update only their own draft; ORG_ADMIN can update any (for protected fields)
+      allow update: if request.auth != null
+                     && (isAnyAdmin()
+                         || (getUserData().role == 'MEMBER'
+                             && resource.data.consultantId == request.auth.uid
+                             && resource.data.isDraft == true));
+    }
+
     // Deny all other access
     match /{document=**} {
       allow read, write: if false;

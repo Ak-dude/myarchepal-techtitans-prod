@@ -1,0 +1,28 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ========================================================================
+    // TEMPLATE PDFs — ORG_ADMIN / SUPER_ADMIN only, scoped to their org
+    // ========================================================================
+    match /orgs/{orgId}/templates/{allPaths=**} {
+      allow read, write: if request.auth != null
+                          && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.organizationId == orgId
+                          && (firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'ORG_ADMIN'
+                              || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'SUPER_ADMIN');
+    }
+
+    // ========================================================================
+    // SUBMISSION ATTACHMENTS — any org member can read/write for their org's sites
+    // ========================================================================
+    match /orgs/{orgId}/sites/{siteId}/submissions/{allPaths=**} {
+      allow read, write: if request.auth != null
+                          && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.organizationId == orgId;
+    }
+
+    // Deny everything else
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

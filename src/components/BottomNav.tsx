@@ -1,4 +1,4 @@
-import { Home, Compass, Plus, Heart, Newspaper, Package, PlusSquare, Calendar, Store, Menu, Users, User, Settings, Lock, Info, Mail, LogOut, ChevronRight, BookOpen, MessageSquare, Star, Building2, Shield } from "lucide-react";
+import { Home, Compass, Plus, Heart, Newspaper, Package, PlusSquare, Calendar, Store, Menu, Users, User, Settings, Lock, Info, Mail, LogOut, ChevronRight, BookOpen, MessageSquare, Star, Building2, Shield, ClipboardList } from "lucide-react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useState } from "react";
 import {
@@ -53,7 +53,7 @@ export const BottomNav = () => {
   const location = useLocation();
   const { isAuthenticated, logout } = useAuth();
   const { isArchaeologist } = useArchaeologist();
-  const { isSuperAdmin, isAdmin } = useUser();
+  const { isSuperAdmin, isAdmin, isMember } = useUser();
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
   const [isGiftShopSheetOpen, setIsGiftShopSheetOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -234,6 +234,34 @@ export const BottomNav = () => {
             ) : isAuthenticated ? (
               // Account submenu
               <>
+                {/* My Assignments — MEMBER only */}
+                {isMember && !isAdmin && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      className="w-full h-auto py-3 px-4 flex items-center gap-4 hover:bg-muted/80 active:scale-[0.98] rounded-xl transition-all justify-start"
+                      onClick={() => handleMenuItemClick('/my-assignments')}
+                    >
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        location.pathname.startsWith('/my-assignments') || location.pathname.startsWith('/form/')
+                          ? 'bg-primary/20'
+                          : 'bg-muted'
+                      }`}>
+                        <ClipboardList className={`w-5 h-5 ${
+                          location.pathname.startsWith('/my-assignments') || location.pathname.startsWith('/form/')
+                            ? 'text-primary'
+                            : 'text-muted-foreground'
+                        }`} />
+                      </div>
+                      <div className="text-left flex-1">
+                        <div className="text-body font-semibold text-foreground font-sans leading-snug">My Assignments</div>
+                        <div className="text-caption text-muted-foreground font-sans leading-snug">View and fill assigned forms</div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                    <div className="border-t border-border my-2" />
+                  </>
+                )}
                 {/* Gift Shop items */}
                 {giftShopItems.map((item) => (
                   <Button

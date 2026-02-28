@@ -66,6 +66,15 @@ import AboutUs from "./pages/AboutUs";
 import SiteTimeMachine from "./pages/SiteTimeMachine";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import NotFound from "./pages/NotFound";
+import TemplateList from "./pages/TemplateList";
+import TemplateImportPDF from "./pages/TemplateImportPDF";
+import TemplateEditor from "./pages/TemplateEditor";
+import TemplateBuilder from "./pages/TemplateBuilder";
+import AdminSiteAssignments from "./pages/AdminSiteAssignments";
+import AssignForm from "./pages/AssignForm";
+import MyAssignments from "./pages/MyAssignments";
+import FormFill from "./pages/FormFill";
+import SubmissionDetail from "./pages/SubmissionDetail";
 
 // Create React Query client instance
 const queryClient = new QueryClient();
@@ -188,6 +197,57 @@ const App = () => {
             <Route path="/org-dashboard" element={
               <AdminRoute>
                 <OrgAdminDashboard />
+              </AdminRoute>
+            } />
+
+            {/* Template management routes */}
+            <Route path="/templates" element={
+              <AdminRoute>
+                <TemplateList />
+              </AdminRoute>
+            } />
+            <Route path="/templates/new/pdf" element={
+              <AdminRoute>
+                <TemplateImportPDF />
+              </AdminRoute>
+            } />
+            <Route path="/templates/:templateId/edit" element={
+              <AdminRoute>
+                <TemplateEditor />
+              </AdminRoute>
+            } />
+            <Route path="/templates/new/blank" element={
+              <AdminRoute>
+                <TemplateBuilder />
+              </AdminRoute>
+            } />
+
+            {/* Phase 4 — Consultant routes */}
+            <Route path="/my-assignments" element={
+              <ProtectedRoute>
+                <MyAssignments />
+              </ProtectedRoute>
+            } />
+            <Route path="/form/:siteId" element={
+              <ProtectedRoute>
+                <FormFill />
+              </ProtectedRoute>
+            } />
+            <Route path="/submission/:siteId/:submissionId" element={
+              <ProtectedRoute>
+                <SubmissionDetail />
+              </ProtectedRoute>
+            } />
+
+            {/* Phase 3 — Site assignment routes */}
+            <Route path="/admin-assignments" element={
+              <AdminRoute>
+                <AdminSiteAssignments />
+              </AdminRoute>
+            } />
+            <Route path="/assign-form/:siteId" element={
+              <AdminRoute>
+                <AssignForm />
               </AdminRoute>
             } />
 

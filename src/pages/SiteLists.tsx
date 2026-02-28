@@ -334,6 +334,23 @@ const SiteLists = () => {
                                   Active Project
                                 </Badge>
                               )}
+                              {site.submissionStatus && (
+                                <Badge
+                                  variant="outline"
+                                  className={`mt-1 text-[10px] sm:text-xs ${
+                                    site.submissionStatus === 'submitted' || site.submissionStatus === 'reviewed'
+                                      ? 'bg-green-500/10 text-green-600 border-green-500/20 dark:text-green-400'
+                                      : site.submissionStatus === 'in_progress'
+                                      ? 'bg-blue-500/10 text-blue-600 border-blue-500/20 dark:text-blue-400'
+                                      : 'bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400'
+                                  }`}
+                                >
+                                  {site.submissionStatus === 'assigned' && 'Form Pending'}
+                                  {site.submissionStatus === 'in_progress' && 'In Progress'}
+                                  {site.submissionStatus === 'submitted' && 'Submitted'}
+                                  {site.submissionStatus === 'reviewed' && 'Reviewed'}
+                                </Badge>
+                              )}
                             </div>
                             {isArchaeologist && (
                               <Button

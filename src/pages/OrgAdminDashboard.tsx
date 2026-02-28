@@ -51,7 +51,12 @@ import {
   Trash2,
   Shield,
   UserCheck,
+  ClipboardList,
+  ChevronRight,
 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { SitesService } from '@/services/sites';
+import type { Site } from '@/services/sites';
 
 const OrgAdminDashboard = () => {
   const navigate = useNavigate();
@@ -72,6 +77,8 @@ const OrgAdminDashboard = () => {
     email: '',
     role: 'MEMBER' as UserRole,
   });
+
+  const [assignmentSites, setAssignmentSites] = useState<Site[]>([]);
 
   // Load organization data
   useEffect(() => {
@@ -113,6 +120,14 @@ const OrgAdminDashboard = () => {
 
     loadData();
   }, [user, userLoading, isOrgAdmin, isSuperAdmin, navigate, toast]);
+
+  // Load assignment stats for the Assignments tab
+  useEffect(() => {
+    if (!user?.organizationId) return;
+    SitesService.getSitesByOrganization(user.organizationId)
+      .then(setAssignmentSites)
+      .catch(console.error);
+  }, [user?.organizationId]);
 
   const handleInviteUser = async () => {
     if (!user || !organization) return;
@@ -476,6 +491,22 @@ const OrgAdminDashboard = () => {
           </Card>
         )}
 
+        {/* Tabs: Members / Site Assignments */}
+        <Tabs defaultValue="members">
+          <TabsList className="mb-2">
+            <TabsTrigger value="members">
+              <Users className="w-4 h-4 mr-2" />
+              Members
+            </TabsTrigger>
+            <TabsTrigger value="assignments">
+              <ClipboardList className="w-4 h-4 mr-2" />
+              Site Assignments
+            </TabsTrigger>
+          </TabsList>
+
+          {/* ── Members tab ── */}
+          <TabsContent value="members" className="space-y-6">
+
         {/* Members Table */}
         <Card>
           <CardHeader>
@@ -687,6 +718,60 @@ const OrgAdminDashboard = () => {
             </Table>
           </CardContent>
         </Card>
+
+          </TabsContent>{/* end members tab */}
+
+          {/* ── Assignments tab ── */}
+          <TabsContent value="assignments" className="space-y-6">
+            {/* Assignment stat cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="text-center p-4">
+                  <p className="text-2xl font-bold">{assignmentSites.length}</p>
+                  <p className="text-sm text-muted-foreground">Total Sites</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="text-center p-4">
+                  <p className="text-2xl font-bold text-amber-600">
+                    {assignmentSites.filter(s => !s.assignedConsultantId).length}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Unassigned</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="text-center p-4">
+                  <p className="text-2xl font-bold text-blue-600">
+                    {assignmentSites.filter(s => s.submissionStatus === 'in_progress').length}
+                  </p>
+                  <p className="text-sm text-muted-foreground">In Progress</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="text-center p-4">
+                  <p className="text-2xl font-bold text-green-600">
+                    {assignmentSites.filter(s =>
+                      s.submissionStatus === 'submitted' || s.submissionStatus === 'reviewed'
+                    ).length}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Submitted</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Button
+              className="w-full sm:w-auto"
+              variant="outline"
+              onClick={() => navigate('/admin-assignments')}
+            >
+              <ClipboardList className="w-4 h-4 mr-2" />
+              Manage All Site Assignments
+              <ChevronRight className="w-4 h-4 ml-2" />
+            </Button>
+          </TabsContent>
+
+        </Tabs>{/* end tabs */}
+
       </div>
     </ResponsiveLayout>
   );

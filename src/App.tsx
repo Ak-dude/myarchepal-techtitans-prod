@@ -75,6 +75,7 @@ import AssignForm from "./pages/AssignForm";
 import MyAssignments from "./pages/MyAssignments";
 import FormFill from "./pages/FormFill";
 import SubmissionDetail from "./pages/SubmissionDetail";
+import { HelpButton } from "@/components/HelpButton";
 
 // Create React Query client instance
 const queryClient = new QueryClient();
@@ -97,6 +98,7 @@ const App = () => {
           <Sonner />
           {/* React Router for navigation - HashRouter for Capacitor compatibility */}
           <HashRouter>
+            <HelpButton />
             <Routes>
             {/* Public routes */}
             <Route path="/" element={<Index />} />

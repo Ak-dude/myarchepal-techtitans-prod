@@ -54,6 +54,7 @@ export interface Artifact {
   quantity?: number; // Number of items available for sale
   model3DForSale?: boolean; // Whether the 3D model is marked for sale
   model3DPrice?: number; // Price to download the 3D model
+  videos?: string[]; // URLs of uploaded artifact videos
   organizationId?: string; // Organization that owns this artifact
   visibility?: 'public' | 'private'; // Visibility setting (Pro/Enterprise orgs only)
 }
@@ -492,6 +493,23 @@ export class ArtifactsService {
       console.error('Error updating artifact 3D model:', error);
       throw error;
     }
+  }
+
+  // Upload a single artifact video; returns download URL
+  static async uploadArtifactVideo(artifactId: string, file: File): Promise<string> {
+    if (!storage) throw new Error('Firebase Storage is not properly initialized');
+    const timestamp = Date.now();
+    const filename = `artifacts/${artifactId}/videos/${timestamp}_${file.name}`;
+    const storageReference = ref(storage, filename);
+    const snapshot = await uploadBytes(storageReference, file);
+    return getDownloadURL(snapshot.ref);
+  }
+
+  // Append video URLs to the artifact's videos array
+  static async updateArtifactVideos(artifactId: string, videoUrls: string[]): Promise<void> {
+    if (!db) throw new Error('Firebase is not properly initialized');
+    const artifactDoc = doc(db, 'Artifacts', artifactId);
+    await updateDoc(artifactDoc, { videos: videoUrls, updatedAt: Timestamp.now() });
   }
 
   // Delete 3D model

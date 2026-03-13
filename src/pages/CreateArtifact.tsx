@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Upload, Image as ImageIcon, MapPin, Calendar, Ruler, Tag, Loader2, Building2, DollarSign, Mic, MicOff, FileText, WifiOff, Cloud, Globe, Lock } from "lucide-react";
+import { Upload, Image as ImageIcon, MapPin, Calendar, Ruler, Tag, Loader2, Building2, DollarSign, Mic, MicOff, FileText, WifiOff, Cloud, Globe, Lock, Video, X } from "lucide-react";
 import { useKeyboard } from "@/hooks/use-keyboard";
 import { ResponsiveLayout } from "@/components/ResponsiveLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -55,6 +55,9 @@ const CreateArtifact = () => {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [aiSummary, setAiSummary] = useState<string>("");
   const [analyzingImage, setAnalyzingImage] = useState(false);
+  const [selectedVideos, setSelectedVideos] = useState<File[]>([]);
+  const [youtubeUrls, setYoutubeUrls] = useState<string[]>([]);
+  const [youtubeInput, setYoutubeInput] = useState('');
   const [selected3DModel, setSelected3DModel] = useState<File | null>(null);
   const [model3DForSale, setModel3DForSale] = useState(false);
   const [model3DPrice, setModel3DPrice] = useState<string>("");
@@ -369,6 +372,51 @@ const CreateArtifact = () => {
     setModel3DPrice("");
   };
 
+  const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    const MAX_VIDEO_MB = 100;
+    for (const file of files) {
+      if (!file.type.startsWith('video/')) {
+        toast({ title: "Invalid file type", description: `"${file.name}" is not a video file`, variant: "destructive" });
+        continue;
+      }
+      if (file.size > MAX_VIDEO_MB * 1024 * 1024) {
+        toast({ title: "File too large", description: `"${file.name}" exceeds the ${MAX_VIDEO_MB} MB limit`, variant: "destructive" });
+        continue;
+      }
+      setSelectedVideos(prev => [...prev, file]);
+    }
+  };
+
+  const removeVideo = (index: number) => {
+    setSelectedVideos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const getYouTubeId = (url: string): string | null => {
+    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
+    return match ? match[1] : null;
+  };
+
+  const addYouTubeUrl = () => {
+    const id = getYouTubeId(youtubeInput.trim());
+    if (!id) {
+      toast({ title: "Invalid URL", description: "Please enter a valid YouTube URL", variant: "destructive" });
+      return;
+    }
+    const watchUrl = `https://www.youtube.com/watch?v=${id}`;
+    if (youtubeUrls.includes(watchUrl)) {
+      toast({ title: "Already added", description: "This video is already in the list" });
+      return;
+    }
+    setYoutubeUrls(prev => [...prev, watchUrl]);
+    setYoutubeInput('');
+  };
+
+  const removeYouTubeUrl = (index: number) => {
+    setYoutubeUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
   const analyzeImageWithAI = async (file: File) => {
     try {
       setAnalyzingImage(true);
@@ -564,6 +612,23 @@ const CreateArtifact = () => {
           toast({
             title: "Warning",
             description: "Artifact created but 3D model upload failed",
+            variant: "destructive"
+          });
+        }
+      }
+
+      // Upload videos + save YouTube URLs
+      if ((selectedVideos.length > 0 || youtubeUrls.length > 0) && artifactId) {
+        try {
+          const uploadedUrls = await Promise.all(
+            selectedVideos.map(v => ArtifactsService.uploadArtifactVideo(artifactId, v))
+          );
+          await ArtifactsService.updateArtifactVideos(artifactId, [...uploadedUrls, ...youtubeUrls]);
+        } catch (videoError) {
+          console.error("Error uploading videos:", videoError);
+          toast({
+            title: "Warning",
+            description: "Artifact created but video upload failed",
             variant: "destructive"
           });
         }
@@ -901,6 +966,93 @@ const CreateArtifact = () => {
                     )}
                   </div>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Videos */}
+          <Card className="border-border">
+            <CardContent className="pt-6 space-y-4">
+              <Label className="text-foreground flex items-center gap-2">
+                <Video className="w-4 h-4" />
+                Videos
+              </Label>
+
+              {/* YouTube URL input */}
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Add YouTube Link</p>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    value={youtubeInput}
+                    onChange={e => setYoutubeInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addYouTubeUrl())}
+                    className="border-border text-sm"
+                  />
+                  <Button type="button" size="sm" onClick={addYouTubeUrl} className="shrink-0">
+                    Add
+                  </Button>
+                </div>
+              </div>
+
+              {/* YouTube URLs list */}
+              {youtubeUrls.length > 0 && (
+                <ul className="space-y-2">
+                  {youtubeUrls.map((url, i) => {
+                    const id = getYouTubeId(url)!;
+                    return (
+                      <li key={i} className="flex items-center gap-3 bg-muted rounded-lg p-2">
+                        <img
+                          src={`https://img.youtube.com/vi/${id}/mqdefault.jpg`}
+                          alt="thumbnail"
+                          className="w-20 h-14 object-cover rounded shrink-0"
+                        />
+                        <span className="flex-1 text-xs truncate text-muted-foreground">{url}</span>
+                        <button type="button" aria-label="Remove video" onClick={() => removeYouTubeUrl(i)}>
+                          <X className="w-4 h-4 text-muted-foreground hover:text-destructive" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {/* File upload */}
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Or Upload Video File</p>
+                {selectedVideos.length > 0 && (
+                  <ul className="space-y-1">
+                    {selectedVideos.map((v, i) => (
+                      <li key={i} className="flex items-center gap-2 text-sm bg-muted rounded px-2 py-1.5">
+                        <Video className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                        <span className="flex-1 truncate">{v.name}</span>
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {(v.size / (1024 * 1024)).toFixed(1)} MB
+                        </span>
+                        <button type="button" aria-label={`Remove ${v.name}`} onClick={() => removeVideo(i)}>
+                          <X className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <label htmlFor="video-upload">
+                  <Button variant="outline" className="w-full" size="sm" type="button" asChild>
+                    <span>
+                      <Upload className="w-4 h-4 mr-2" />
+                      {selectedVideos.length > 0 ? 'Add More Files' : 'Upload Video File'}
+                    </span>
+                  </Button>
+                </label>
+                <input
+                  id="video-upload"
+                  type="file"
+                  accept="video/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleVideoSelect}
+                />
+                <p className="text-xs text-muted-foreground">MP4, MOV, WebM — up to 100 MB each.</p>
               </div>
             </CardContent>
           </Card>

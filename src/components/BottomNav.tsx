@@ -1,6 +1,7 @@
 import { Home, Compass, Plus, Heart, Newspaper, Package, PlusSquare, Calendar, Store, Menu, Users, User, Settings, Lock, Info, Mail, LogOut, ChevronRight, BookOpen, MessageSquare, Star, Building2, Shield, ClipboardList } from "lucide-react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useState } from "react";
+import { CreateSiteModal } from "@/components/CreateSiteModal";
 import {
   Sheet,
   SheetContent,
@@ -58,6 +59,7 @@ export const BottomNav = () => {
   const [isGiftShopSheetOpen, setIsGiftShopSheetOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeSubmenu, setActiveSubmenu] = useState<'explore' | 'account' | null>(null);
+  const [createSiteModalOpen, setCreateSiteModalOpen] = useState(false);
 
   const handleCreateClick = () => {
     setIsCreateSheetOpen(true);
@@ -65,7 +67,11 @@ export const BottomNav = () => {
 
   const handleContentOptionClick = (path: string) => {
     setIsCreateSheetOpen(false);
-    navigate(path);
+    if (path === '/new-site') {
+      setCreateSiteModalOpen(true);
+    } else {
+      navigate(path);
+    }
   };
 
   const handleGiftShopOptionClick = (path: string) => {
@@ -444,6 +450,9 @@ export const BottomNav = () => {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Create Site Modal */}
+      <CreateSiteModal open={createSiteModalOpen} onOpenChange={setCreateSiteModalOpen} />
 
       {/* Gift Shop Sheet */}
       <Sheet open={isGiftShopSheetOpen} onOpenChange={setIsGiftShopSheetOpen}>

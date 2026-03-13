@@ -1,12 +1,14 @@
 """
-GPT-4o PDF parser via Azure OpenAI.
+PDF parser pipeline — Claude Opus 4.6 (single-step).
 
-Receives a base64-encoded PDF, extracts text with pdfplumber, sends it to
-GPT-4o, and returns a structured form template (sections + fields).
+Sends the raw PDF bytes directly to Claude as a native document block.
+Claude reads the PDF and returns a fully structured SiteTemplate JSON
+in one call — no separate OCR/extraction step required.
+
+Env vars required:
+  CLAUDE_API_KEY   — Anthropic API key
 """
 
-import base64
-import io
 import json
 import logging
 import os
@@ -14,8 +16,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-import pdfplumber
-from openai import AzureOpenAI
+import anthropic
 from dotenv import load_dotenv
 
 from api.services.crashvault import capture_exception, log_info
@@ -25,12 +26,21 @@ logger = logging.getLogger("archepal.services.claude_parser")
 # Load env vars from project root .env (two levels up from api/services/)
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
+MODEL = "claude-opus-4-6"
+
 # ---------------------------------------------------------------------------
-# Prompt
+# Structuring prompt
 # ---------------------------------------------------------------------------
 
 PARSE_PROMPT = """\
 You are analyzing an archaeological site recording form. Extract its COMPLETE structure.
+
+CRITICAL RULES — follow without exception:
+- Extract EVERY SINGLE field visible in the form. Do NOT skip, summarize, or stop early.
+- Do NOT truncate the JSON. The response must be syntactically complete and valid.
+- Do NOT stop generating until ALL sections and ALL fields have been output.
+- If a section has 20 fields, output all 20. If the form has 80 fields, output all 80.
+- Do NOT omit any field to save space. Do NOT write "..." or similar placeholders.
 
 Return ONLY valid JSON — no markdown, no explanation — matching this exact schema:
 
@@ -94,78 +104,95 @@ Additional rules:
 - For fields with conditional visibility (e.g. "If Yes, explain"), set conditionalLogic:
   { "triggerFieldId": "<id-of-trigger-field>", "triggerValue": "<value>", "action": "show" }
 - Include every input, checkbox, radio button, date box, and text area visible in the form.
+- Do NOT stop until the closing `}` of the root JSON object has been emitted.
 """
+
+
+# ---------------------------------------------------------------------------
+# Public entry point (called by the router)
+# ---------------------------------------------------------------------------
+
+def parse_pdf_with_claude(base64_pdf: str) -> dict[str, Any]:
+    """
+    Send the PDF directly to Claude Opus 4.6 as a native document block.
+    Claude reads the full PDF and returns a structured SiteTemplate JSON.
+    """
+    api_key = os.environ["CLAUDE_API_KEY"]
+    client = anthropic.Anthropic(api_key=api_key)
+
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=16000,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": base64_pdf,
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": PARSE_PROMPT,
+                    },
+                ],
+            }
+        ],
+    )
+
+    raw_text = response.content[0].text if response.content else ""
+
+    if response.stop_reason == "max_tokens":
+        raw_text = _repair_truncated_json(raw_text)
+
+    json_match = re.search(r"\{[\s\S]*\}", raw_text)
+    if not json_match:
+        raise ValueError(f"Claude returned no JSON. Raw response:\n{raw_text[:500]}")
+
+    return json.loads(json_match.group())
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _extract_text_from_base64_pdf(base64_pdf: str) -> str:
-    """Decode a base64 PDF and extract all text via pdfplumber."""
-    pdf_bytes = base64.b64decode(base64_pdf)
-    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
-        pages = [page.extract_text() or "" for page in pdf.pages]
-    return "\n".join(pages).strip()
-
-
-# ---------------------------------------------------------------------------
-# Parser
-# ---------------------------------------------------------------------------
-
-def parse_pdf_with_claude(base64_pdf: str) -> dict[str, Any]:
+def _repair_truncated_json(raw: str) -> str:
     """
-    Extract form structure from a base64-encoded PDF using GPT-4o via Azure OpenAI.
-    Returns the parsed template as a Python dict.
-
-    Named parse_pdf_with_claude for backward compatibility with the router import.
+    Best-effort repair of a JSON string cut off mid-stream by a token limit.
+    Closes any open string, then appends enough brackets/braces to make it valid.
     """
-    endpoint = os.environ["VITE_AZURE_OPENAI_ENDPOINT"]
-    api_key = os.environ["VITE_AZURE_OPENAI_API_KEY"]
-    deployment = os.environ.get("VITE_AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o")
-    api_version = os.environ.get("VITE_AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+    # Close open string literal (odd number of unescaped quotes)
+    unescaped_quotes = len(re.findall(r'(?<!\\)"', raw))
+    if unescaped_quotes % 2 == 1:
+        raw = raw + '"'
 
-    # Extract text from PDF
-    logger.info("Extracting text from PDF (%d base64 chars)", len(base64_pdf))
-    pdf_text = _extract_text_from_base64_pdf(base64_pdf)
-    if not pdf_text:
-        logger.error("No text extracted from PDF")
-        raise ValueError("Could not extract any text from the uploaded PDF.")
+    stack = []
+    in_string = False
+    escape_next = False
+    for ch in raw:
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == '\\' and in_string:
+            escape_next = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch in ('{', '['):
+            stack.append(ch)
+        elif ch == '}' and stack and stack[-1] == '{':
+            stack.pop()
+        elif ch == ']' and stack and stack[-1] == '[':
+            stack.pop()
 
-    logger.info("PDF text extracted — %d characters, sending to %s", len(pdf_text), deployment)
+    for opener in reversed(stack):
+        raw += ']' if opener == '[' else '}'
 
-    client = AzureOpenAI(
-        azure_endpoint=endpoint,
-        api_key=api_key,
-        api_version=api_version,
-    )
-
-    response = client.chat.completions.create(
-        model=deployment,
-        messages=[
-            {"role": "system", "content": PARSE_PROMPT},
-            {"role": "user", "content": pdf_text},
-        ],
-        max_tokens=8096,
-        temperature=0,
-    )
-
-    raw_text = response.choices[0].message.content or ""
-    usage = response.usage
-    logger.info("GPT-4o response received — %d chars, tokens: prompt=%s completion=%s",
-                len(raw_text),
-                getattr(usage, "prompt_tokens", "?"),
-                getattr(usage, "completion_tokens", "?"))
-
-    # Strip optional markdown code fences (```json ... ```)
-    json_match = re.search(r"\{[\s\S]*\}", raw_text)
-    if not json_match:
-        logger.error("GPT-4o returned no JSON — raw response: %s", raw_text[:500])
-        raise ValueError(f"GPT-4o returned no JSON. Raw response:\n{raw_text[:500]}")
-
-    result = json.loads(json_match.group())
-    logger.info("Parse complete — template=%s sections=%d fields=%d",
-                result.get("templateName", "?"),
-                len(result.get("sections", [])),
-                len(result.get("fields", [])))
-    return result
+    return raw

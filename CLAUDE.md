@@ -222,7 +222,7 @@ client = AzureOpenAI(
 response = client.chat.completions.create(model=os.environ.get("VITE_AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o"), ...)
 ```
 
-**pip packages:** `fastapi uvicorn pdfplumber openai python-multipart firebase-admin aiosmtplib python-dotenv reportlab`
+**pip packages:** `fastapi uvicorn openai anthropic python-multipart firebase-admin aiosmtplib python-dotenv reportlab`
 
 **Vercel plan:** Pro recommended — PDF parsing takes 15-30s (Hobby cap is 60s, Pro is 300s).
 
@@ -330,8 +330,17 @@ Phase 4 (form fill + offline) → Phase 6 (routing) → Phase 7 (validation)
 
 **Next tasks:** Phase 7 is complete. All planned dynamic-form feature phases are implemented.
 
+**Recent cleanup (post-Phase 7):**
+- ✅ Switched PDF parsing to **Claude Opus 4.6 via Anthropic API** — removed LLMWhisperer + Azure AI Foundry pipeline
+- ✅ Removed unused env vars `AZURE_FOUNDY_PROJECT_ENDPOINT`, `AZURE_PROJECT_API_KEY` from `.env`
+- ✅ Deleted `docs/llmwhisperer-nextjs-guide.md` (no longer relevant)
+- ✅ Updated `TemplateImportPDF.tsx` UI copy to remove model-specific branding
+
 **AI model:**
-- PDF parsing backend uses **GPT-4o via Azure OpenAI** (`openai` SDK, `AzureOpenAI` client)
-- Env vars: `VITE_AZURE_OPENAI_ENDPOINT`, `VITE_AZURE_OPENAI_API_KEY`, `VITE_AZURE_OPENAI_DEPLOYMENT_NAME`, `VITE_AZURE_OPENAI_API_VERSION`
-- PDF text extracted via `pdfplumber` before sending to GPT-4o (no native PDF block support)
-- Frontend artifact/article image analysis (`src/services/azure-openai.ts`) also uses same deployment
+- PDF form extraction — **Claude Opus 4.6 via Anthropic API** (single step, no OCR pre-processing)
+  - Base64 PDF sent as native `document` content block; Claude reads layout, checkboxes, tables directly
+  - Env var: `CLAUDE_API_KEY`
+  - SDK: `anthropic` Python package (`api/services/claude_parser.py`)
+  - `max_tokens: 16000`; truncation repair helper for edge cases
+- Frontend artifact/article image analysis (`src/services/azure-openai.ts`) uses GPT-4o via Azure OpenAI
+  - Env vars: `VITE_AZURE_OPENAI_ENDPOINT`, `VITE_AZURE_OPENAI_API_KEY`, `VITE_AZURE_OPENAI_DEPLOYMENT_NAME`, `VITE_AZURE_OPENAI_API_VERSION`

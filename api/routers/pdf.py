@@ -1,8 +1,9 @@
 """
 POST /api/parse-pdf
 
-Receives a base64-encoded PDF from the frontend, sends it to Claude Sonnet 4.6
-via Azure AI Foundry, and returns the extracted form template structure.
+Receives a base64-encoded PDF from the frontend, sends it directly to
+Claude Opus 4.6 as a native document block, and returns the extracted
+form template (sections + fields).
 """
 
 import logging

@@ -277,21 +277,29 @@ service cloud.firestore {
     // ========================================================================
 
     match /siteTemplates/{templateId} {
-      // ORG_ADMIN (or SUPER_ADMIN) in the same org can read all; MEMBER reads published
-      allow read: if canAccessOrg(resource.data.orgId)
-                   && (isAnyAdmin() || resource.data.status == 'published');
-      // Only ORG_ADMIN or SUPER_ADMIN can create/edit/delete
+      // System default templates (orgId == 'SYSTEM') are readable by any authenticated user
+      // ORG_ADMIN (or SUPER_ADMIN) in the same org can read all; MEMBER reads published only
+      allow read: if (request.auth != null && resource.data.orgId == 'SYSTEM')
+                   || (canAccessOrg(resource.data.orgId)
+                       && (isAnyAdmin() || resource.data.status == 'published'));
+      // Only ORG_ADMIN or SUPER_ADMIN can create/edit/delete (system templates are blocked by orgId check)
       allow create: if request.auth != null && isAnyAdmin()
                     && request.resource.data.orgId == getUserData().organizationId;
+      // System templates (orgId == 'SYSTEM') cannot be updated or deleted by any frontend user
       allow update, delete: if request.auth != null && isAnyAdmin()
-                    && resource.data.orgId == getUserData().organizationId;
+                    && resource.data.orgId == getUserData().organizationId
+                    && resource.data.orgId != 'SYSTEM';
 
       match /fields/{fieldId} {
-        allow read: if canAccessOrg(get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId);
+        allow read: if request.auth != null
+                     && (get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId == 'SYSTEM'
+                         || canAccessOrg(get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId));
         allow write: if request.auth != null && isAnyAdmin();
       }
       match /sections/{sectionId} {
-        allow read: if canAccessOrg(get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId);
+        allow read: if request.auth != null
+                     && (get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId == 'SYSTEM'
+                         || canAccessOrg(get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId));
         allow write: if request.auth != null && isAnyAdmin();
       }
     }

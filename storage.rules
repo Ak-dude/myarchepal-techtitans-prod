@@ -20,6 +20,16 @@ service firebase.storage {
                           && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.organizationId == orgId;
     }
 
+    // ========================================================================
+    // SITE IMAGES — authenticated users can read; ORG_ADMIN/SUPER_ADMIN can write
+    // ========================================================================
+    match /sites/{siteId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                    && (firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'ORG_ADMIN'
+                        || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'SUPER_ADMIN');
+    }
+
     // Deny everything else
     match /{allPaths=**} {
       allow read, write: if false;

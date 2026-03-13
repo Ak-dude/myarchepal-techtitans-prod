@@ -16,7 +16,8 @@
     "ios": "npm run build && npx cap sync ios && npx cap open ios",
     "android": "npm run build && npx cap sync android && npx cap open android",
     "ios:dev": "npm run build:dev && npx cap sync ios && npx cap open ios",
-    "android:dev": "npm run build:dev && npx cap sync android && npx cap open android"
+    "android:dev": "npm run build:dev && npx cap sync android && npx cap open android",
+    "seed:default-template": "node scripts/seed-default-template.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",

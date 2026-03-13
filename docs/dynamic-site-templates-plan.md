@@ -375,9 +375,10 @@ getMemberAssignments(consultantId: string, orgId: string): Promise<Site[]>
 
 ### Task 1.5 — Dynamic PDF → Template Pipeline ✅
 
-> **Decision:** Replaced the original hardcoded seed script with a fully dynamic pipeline.
-> Any PDF form can now be uploaded and converted into a `SiteTemplate` automatically via
-> Claude Sonnet 4.6. No form-specific code is needed.
+> **Decision (updated):** Single-step pipeline using **Claude Opus 4.6 via Anthropic API**.
+> The base64 PDF is sent directly as a native `document` content block — Claude reads the full
+> layout including checkboxes, radio buttons, tables, and multi-column forms in one call.
+> No separate OCR or text-extraction step required.
 
 #### Pipeline overview
 
@@ -385,8 +386,9 @@ getMemberAssignments(consultantId: string, orgId: string): Promise<Site[]>
 User uploads PDF
   → FileReader (browser) converts to base64
     → POST /api/parse-pdf  { base64_pdf, file_name, org_id }
-      → Claude Sonnet 4.6 (Azure AI Foundry) reads PDF as native document block
-        → Returns structured JSON  { templateName, siteType, sections[], fields[] }
+      → Claude Opus 4.6 (Anthropic API)
+          → Reads PDF natively as a document block
+          → Returns { templateName, siteType, sections[], fields[] } JSON
     → TemplateImportPDF.tsx renders review UI (editable table)
       → Admin corrects labels / types / toggles
         → SiteTemplatesService.createTemplate()
@@ -400,21 +402,27 @@ User uploads PDF
 |---|---|
 | `api/index.py` | FastAPI app with CORS; mounts all routers under `/api` |
 | `api/routers/pdf.py` | `POST /api/parse-pdf` endpoint — validates request, calls claude_parser, returns typed response |
-| `api/services/claude_parser.py` | Sends base64 PDF as Anthropic **document block** to Claude Sonnet 4.6 via Azure AI Foundry; strips markdown fences; returns parsed dict |
+| `api/services/claude_parser.py` | Sends base64 PDF to Claude Opus 4.6 as a native document block; returns structured `SiteTemplate` JSON; includes truncation repair helper |
 | `src/services/pdfParser.ts` | `parsePdfTemplate(file, orgId)` — `FileReader` → base64 → fetch `/api/parse-pdf` → typed `ParsedTemplate` |
 | `src/pages/TemplateImportPDF.tsx` | 3-step UI: **Upload** (drag-and-drop) → **Parsing** (skeleton) → **Review** (editable sections/fields table) → save |
-| `requirements.txt` | `fastapi uvicorn anthropic python-multipart firebase-admin aiosmtplib python-dotenv reportlab` |
+| `requirements.txt` | `fastapi uvicorn openai anthropic python-multipart firebase-admin aiosmtplib python-dotenv reportlab` |
 | `vercel.json` | `/api/(.*)` → `api/index.py` rewrite added before SPA catch-all |
 
 #### Environment variables used (from root `.env`)
 
 | Variable | Purpose |
 |---|---|
-| `AZURE_FOUNDY_PROJECT_ENDPOINT` | Azure AI Foundry base URL for Claude |
-| `AZURE_PROJECT_API_KEY` | Azure AI Foundry API key |
-| `AZURE_FOUNDRY_DEPLOYMENT` | Deployment name (default: `claude-sonnet-4-6`) |
+| `CLAUDE_API_KEY` | Anthropic API key for Claude Opus 4.6 PDF extraction |
 
-#### Claude prompt behaviour
+#### Claude Opus 4.6 call
+
+```
+POST https://api.anthropic.com/v1/messages
+Model:      claude-opus-4-6
+Max tokens: 16000
+Content:    [ { type: "document", source: { type: "base64", media_type: "application/pdf", data: <base64> } },
+              { type: "text", text: <PARSE_PROMPT> } ]
+```
 
 Claude is instructed to:
 - Identify all sections top-to-bottom, marking `isProtected: true` for "Office Use Only" sections
@@ -422,6 +430,7 @@ Claude is instructed to:
 - Wire `conditionalLogic` for fields that conditionally appear (e.g. "If Yes, explain")
 - Return `groupFields[]` inside `repeating_group` fields (e.g. burial record rows)
 - Output **only valid JSON** — no markdown, no explanation
+- Extract **every single field** — no skipping, no placeholders
 
 #### Review UI (TemplateImportPDF.tsx)
 
@@ -476,10 +485,9 @@ Three cards with icons:
 
 **Parse step (calls FastAPI backend):**
 - After upload, call `POST http://localhost:8000/api/parse-pdf` with
-  `{ storagePath, orgId }` JSON body
-- Backend downloads PDF from Firebase Storage (using Firebase Admin SDK),
-  extracts text with `pdfplumber`, and sends to Claude Sonnet 4.6 via Azure AI Foundry
-- Returns `{ sections: TemplateSection[], fields: TemplateField[] }`
+  `{ base64_pdf, file_name, orgId }` JSON body
+- Backend sends the PDF directly to **Claude Opus 4.6** (Anthropic API) as a native document block
+- Returns `{ templateName, siteType, sections: TemplateSection[], fields: TemplateField[] }`
 
 **Review step (frontend):**
 - Side-by-side: PDF `<iframe>` + detected fields table
@@ -1050,9 +1058,7 @@ VITE_APP_URL=https://your-app.vercel.app   # update to real Vercel URL after fir
 VITE_MAX_UPLOAD_MB=20
 ```
 
-> `Azure_PROJECT_ENDPOINT` and `AZURE_PROJECT_API_KEY` are already in `.env` from earlier.
-> They are **not** prefixed with `VITE_` — they are backend-only and must never be exposed
-> to the browser.
+> `LLM_WHISPERER_API_KEY` is backend-only (no `VITE_` prefix) — never expose to the browser.
 
 ---
 
@@ -1063,8 +1069,12 @@ No `backend/.env` or `api/.env` file is committed or deployed.
 
 | Variable | Where to get it |
 |---|---|
-| `Azure_PROJECT_ENDPOINT` | Azure AI Foundry project → Endpoints |
-| `AZURE_PROJECT_API_KEY` | Azure AI Foundry project → Keys |
+| `LLM_WHISPERER_API_KEY` | Unstract LLMWhisperer dashboard → API Keys |
+| `LLMWHISPERER_BASE_URL_V2` | Optional — defaults to US-central region endpoint |
+| `VITE_AZURE_OPENAI_ENDPOINT` | Azure AI Foundry project → Endpoints |
+| `VITE_AZURE_OPENAI_API_KEY` | Azure AI Foundry project → Keys |
+| `VITE_AZURE_OPENAI_DEPLOYMENT_NAME` | GPT-4o deployment name (e.g. `gpt-4o`) |
+| `VITE_AZURE_OPENAI_API_VERSION` | e.g. `2024-02-15-preview` |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase Console → Project Settings → Service Accounts → Generate new private key → paste full JSON as one line |
 | `FIREBASE_STORAGE_BUCKET` | Firebase Console → Storage → copy the bucket name (e.g. `your-app.firebasestorage.app`) |
 | `SMTP_HOST` | Your email provider (e.g. `smtp.sendgrid.net`) |

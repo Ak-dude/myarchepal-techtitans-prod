@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Upload, FileText, Trash2, Plus, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Upload, FileText, Trash2, Plus, ChevronDown, ChevronUp, X, Circle, Square } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,7 @@ import { useUser } from '@/hooks/use-user';
 import { parsePdfTemplate } from '@/services/pdfParser';
 import { SiteTemplatesService } from '@/services/siteTemplates';
 import type { TemplateField, TemplateSection, FieldType } from '@/types/siteTemplates';
+import { ResponsiveLayout } from '@/components/ResponsiveLayout';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -48,9 +49,11 @@ type Step = 'upload' | 'parsing' | 'review' | 'saving';
 function InlineOptionsEditor({
   options,
   onChange,
+  fieldType,
 }: {
   options: string[];
   onChange: (opts: string[]) => void;
+  fieldType: FieldType;
 }) {
   const [draft, setDraft] = useState('');
 
@@ -61,34 +64,39 @@ function InlineOptionsEditor({
     setDraft('');
   };
 
+  const isRadio = fieldType === 'radio';
+  const OptionIcon = isRadio ? Circle : Square;
+
   return (
-    <div className="flex flex-wrap gap-1 items-center pt-0.5 pb-1 pl-1">
-      <span className="text-xs text-muted-foreground shrink-0 mr-0.5">Options:</span>
+    <div className="ml-2 mt-1 mb-2 pl-3 border-l-2 border-muted space-y-1">
+      <span className="text-xs font-medium text-muted-foreground">Options</span>
       {options.length === 0 && (
-        <span className="text-xs text-muted-foreground italic">None — type below to add</span>
+        <p className="text-xs text-muted-foreground italic">No options yet — add one below</p>
       )}
       {options.map((opt, i) => (
-        <Badge key={i} variant="secondary" className="text-xs gap-1 pr-1 h-5">
-          {opt}
+        <div key={i} className="flex items-center gap-2 group">
+          <OptionIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <span className="text-sm flex-1">{opt}</span>
           <button
             type="button"
-            className="ml-0.5 text-muted-foreground hover:text-destructive"
+            className="text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
             onClick={() => onChange(options.filter((_, idx) => idx !== i))}
           >
-            <X className="h-2.5 w-2.5" />
+            <X className="h-3.5 w-3.5" />
           </button>
-        </Badge>
+        </div>
       ))}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 pt-0.5">
+        <OptionIcon className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
         <Input
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addOption(); } }}
           placeholder="Add option…"
-          className="h-5 text-xs w-28 px-1.5"
+          className="h-7 text-xs flex-1 px-2"
         />
-        <Button type="button" variant="ghost" size="icon" className="h-5 w-5" onClick={addOption}>
-          <Plus className="h-3 w-3" />
+        <Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={addOption}>
+          <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>
     </div>
@@ -243,12 +251,12 @@ export default function TemplateImportPDF() {
 
   if (step === 'upload') {
     return (
+      <ResponsiveLayout>
       <div className="max-w-2xl mx-auto px-4 py-10 space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Import Form from PDF</h1>
           <p className="text-muted-foreground mt-1">
-            Upload any archaeological site form PDF. Claude Sonnet 4.6 will extract
-            sections and fields automatically.
+            Upload any archaeological site form PDF. ArchePal will extract sections and fields automatically.
           </p>
         </div>
 
@@ -296,9 +304,10 @@ export default function TemplateImportPDF() {
           disabled={!selectedFile}
           onClick={handleParse}
         >
-          Parse with Claude Sonnet 4.6
+          Extract Form Now
         </Button>
       </div>
+      </ResponsiveLayout>
     );
   }
 
@@ -308,11 +317,12 @@ export default function TemplateImportPDF() {
 
   if (step === 'parsing') {
     return (
+      <ResponsiveLayout>
       <div className="max-w-3xl mx-auto px-4 py-10 space-y-6">
         <div>
           <h1 className="text-2xl font-bold">Analyzing PDF…</h1>
           <p className="text-muted-foreground mt-1">
-            Claude Sonnet 4.6 is reading the form structure. This takes 15–30 seconds.
+            This takes 30–45 seconds.
           </p>
         </div>
         <div className="space-y-4">
@@ -334,6 +344,7 @@ export default function TemplateImportPDF() {
           ))}
         </div>
       </div>
+      </ResponsiveLayout>
     );
   }
 
@@ -342,6 +353,7 @@ export default function TemplateImportPDF() {
   // ---------------------------------------------------------------------------
 
   return (
+    <ResponsiveLayout>
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -416,11 +428,10 @@ export default function TemplateImportPDF() {
               {!collapsedSections.has(section.id) && (
                 <CardContent className="space-y-2 pt-0">
                   {/* Column headers */}
-                  <div className="grid grid-cols-[1fr_180px_80px_80px_36px] gap-2 px-1 pb-1">
+                  <div className="grid grid-cols-[1fr_180px_80px_36px] gap-2 px-1 pb-1">
                     <span className="text-xs text-muted-foreground font-medium">Label</span>
                     <span className="text-xs text-muted-foreground font-medium">Field Type</span>
                     <span className="text-xs text-muted-foreground font-medium text-center">Required</span>
-                    <span className="text-xs text-muted-foreground font-medium text-center">Protected</span>
                     <span />
                   </div>
 
@@ -429,12 +440,20 @@ export default function TemplateImportPDF() {
                   {/* Fields */}
                   {fieldsBySection(section.id).map(f => (
                     <div key={f.id} className="space-y-0">
-                      <div className="grid grid-cols-[1fr_180px_80px_80px_36px] gap-2 items-center py-1">
-                        <Input
-                          value={f.label}
-                          onChange={e => updateField(f.id, { label: e.target.value })}
-                          className="h-8 text-sm"
-                        />
+                      <div className="grid grid-cols-[1fr_180px_80px_36px] gap-2 items-center py-1">
+                        <div className="flex items-center gap-1.5">
+                          {f.fieldType === 'radio' && (
+                            <Circle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          )}
+                          {(f.fieldType === 'checkbox' || f.fieldType === 'multiselect') && (
+                            <Square className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          )}
+                          <Input
+                            value={f.label}
+                            onChange={e => updateField(f.id, { label: e.target.value })}
+                            className="h-8 text-sm"
+                          />
+                        </div>
                         <Select
                           value={f.fieldType}
                           onValueChange={val => updateField(f.id, { fieldType: val as FieldType })}
@@ -454,12 +473,6 @@ export default function TemplateImportPDF() {
                             onCheckedChange={v => updateField(f.id, { isRequired: v })}
                           />
                         </div>
-                        <div className="flex justify-center">
-                          <Switch
-                            checked={f.isProtected}
-                            onCheckedChange={v => updateField(f.id, { isProtected: v })}
-                          />
-                        </div>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -473,6 +486,7 @@ export default function TemplateImportPDF() {
                       {TYPES_WITH_OPTIONS.includes(f.fieldType) && (
                         <InlineOptionsEditor
                           options={f.options ?? []}
+                          fieldType={f.fieldType}
                           onChange={opts => updateField(f.id, { options: opts })}
                         />
                       )}
@@ -496,5 +510,6 @@ export default function TemplateImportPDF() {
         </div>
       </ScrollArea>
     </div>
+    </ResponsiveLayout>
   );
 }

@@ -4,7 +4,7 @@ import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestor
 import { db } from '@/lib/firebase';
 import { toast } from 'sonner';
 import {
-  Plus, FileText, Edit, Trash2, Copy, Globe, EyeOff, MoreHorizontal,
+  Plus, FileText, Edit, Trash2, Copy, Globe, EyeOff, MoreHorizontal, Lock,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -24,6 +24,7 @@ import { useUser } from '@/hooks/use-user';
 import { SiteTemplatesService } from '@/services/siteTemplates';
 import type { SiteTemplate } from '@/types/siteTemplates';
 import NewTemplateModal from '@/components/templates/NewTemplateModal';
+import { ResponsiveLayout } from '@/components/ResponsiveLayout';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -40,6 +41,7 @@ const SOURCE_VARIANTS: Record<string, 'default' | 'secondary' | 'outline'> = {
   customized:    'secondary',
   blank_canvas:  'secondary',
 };
+
 
 function formatUpdated(ts: any): string {
   try {
@@ -59,12 +61,13 @@ export default function TemplateList() {
   const { user } = useUser();
 
   const [templates, setTemplates] = useState<SiteTemplate[]>([]);
+  const [systemTemplates, setSystemTemplates] = useState<SiteTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<SiteTemplate | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
 
-  // Real-time listener
+  // Real-time listener — org templates
   useEffect(() => {
     if (!db || !user?.organizationId) return;
     const q = query(
@@ -81,6 +84,22 @@ export default function TemplateList() {
     });
     return unsub;
   }, [user?.organizationId]);
+
+  // Real-time listener — system default templates
+  useEffect(() => {
+    if (!db) return;
+    const q = query(
+      collection(db, 'siteTemplates'),
+      where('orgId', '==', 'SYSTEM'),
+      orderBy('updatedAt', 'desc'),
+    );
+    const unsub = onSnapshot(q, snap => {
+      setSystemTemplates(snap.docs.map(d => ({ id: d.id, ...d.data() } as SiteTemplate)));
+    }, err => {
+      console.error('System templates listener error:', err);
+    });
+    return unsub;
+  }, []);
 
   // ---------------------------------------------------------------------------
   // Actions
@@ -150,6 +169,7 @@ export default function TemplateList() {
   // ---------------------------------------------------------------------------
 
   return (
+    <ResponsiveLayout>
     <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
 
       {/* Header */}
@@ -157,7 +177,7 @@ export default function TemplateList() {
         <div>
           <h1 className="text-2xl font-bold">Form Templates</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {loading ? '…' : `${templates.length} template${templates.length !== 1 ? 's' : ''}`}
+            {loading ? '…' : `${templates.length + systemTemplates.length} template${templates.length + systemTemplates.length !== 1 ? 's' : ''}`}
           </p>
         </div>
         <Button onClick={() => setIsNewModalOpen(true)}>
@@ -179,8 +199,8 @@ export default function TemplateList() {
         </div>
       )}
 
-      {/* Empty state */}
-      {!loading && templates.length === 0 && (
+      {/* Empty state — only when no org templates AND no system templates */}
+      {!loading && templates.length === 0 && systemTemplates.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20 text-center border-2 border-dashed rounded-xl">
           <FileText className="h-12 w-12 text-muted-foreground mb-3" />
           <p className="font-medium">No templates yet</p>
@@ -195,7 +215,7 @@ export default function TemplateList() {
       )}
 
       {/* Template table */}
-      {!loading && templates.length > 0 && (
+      {!loading && (templates.length > 0 || systemTemplates.length > 0) && (
         <div className="border rounded-xl overflow-hidden">
           {/* Column headers */}
           <div className="grid grid-cols-[1fr_120px_100px_90px_80px_44px] gap-3 px-4 py-2.5 bg-muted/50 text-xs font-medium text-muted-foreground border-b">
@@ -207,7 +227,64 @@ export default function TemplateList() {
             <span />
           </div>
 
-          {/* Rows */}
+          {/* System (default) templates first */}
+          {systemTemplates.map(t => (
+            <div
+              key={t.id}
+              className="grid grid-cols-[1fr_120px_100px_90px_80px_44px] gap-3 items-center px-4 py-3 border-b last:border-0 bg-amber-50/40 hover:bg-amber-50/60 transition-colors"
+            >
+              {/* Name */}
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <Lock className="h-3 w-3 text-amber-600 shrink-0" />
+                  <p
+                    className="font-medium text-sm truncate cursor-pointer hover:text-primary"
+                    onClick={() => navigate(`/templates/${t.id}/edit`)}
+                  >
+                    {t.name}
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground pl-4.5">{t.fieldCount} fields</p>
+              </div>
+
+              {/* Site Type */}
+              <span className="text-sm truncate">{t.siteType}</span>
+
+              {/* Source — show "System Default" */}
+              <Badge variant="outline" className="text-xs w-fit border-amber-400 text-amber-700">
+                System Default
+              </Badge>
+
+              {/* Status */}
+              <Badge variant="default" className="text-xs w-fit">
+                Published
+              </Badge>
+
+              {/* Updated */}
+              <span className="text-xs text-muted-foreground">{formatUpdated(t.updatedAt)}</span>
+
+              {/* Actions — system templates can only be duplicated */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => navigate(`/templates/${t.id}/edit`)}>
+                    <Edit className="h-3.5 w-3.5 mr-2" />
+                    View / Edit Fields
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDuplicate(t)}>
+                    <Copy className="h-3.5 w-3.5 mr-2" />
+                    Duplicate as Custom
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ))}
+
+          {/* Org templates */}
           {templates.map(t => {
             const busy = actionInProgress === t.id;
             return (
@@ -313,5 +390,6 @@ export default function TemplateList() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </ResponsiveLayout>
   );
 }

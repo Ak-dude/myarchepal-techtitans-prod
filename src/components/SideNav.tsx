@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useState } from "react";
+import { CreateSiteModal } from "@/components/CreateSiteModal";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { useArchaeologist } from "@/hooks/use-archaeologist";
@@ -79,6 +80,7 @@ export const SideNav = () => {
   const [isGiftShopOpen, setIsGiftShopOpen] = useState(false);
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [createSiteModalOpen, setCreateSiteModalOpen] = useState(false);
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -186,8 +188,12 @@ export const SideNav = () => {
                 <button
                   key={item.path}
                   onClick={() => {
-                    navigate(item.path);
                     setIsCreateOpen(false);
+                    if (item.path === '/new-site') {
+                      setCreateSiteModalOpen(true);
+                    } else {
+                      navigate(item.path);
+                    }
                   }}
                   className="w-full flex items-center gap-3 px-4 py-2.5 pl-12 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                 >
@@ -196,6 +202,7 @@ export const SideNav = () => {
                 </button>
               ))}
             </CollapsibleContent>
+            <CreateSiteModal open={createSiteModalOpen} onOpenChange={setCreateSiteModalOpen} />
           </Collapsible>
         )}
 

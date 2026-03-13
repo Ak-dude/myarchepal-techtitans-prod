@@ -55,4 +55,5 @@ export interface SiteTemplate {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   fieldCount: number;          // denormalized for list views
+  isSystemTemplate?: boolean;  // true = shipped default, cannot be deleted
 }

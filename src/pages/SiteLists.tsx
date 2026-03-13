@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { MapPin, Calendar, Users, FileText, Search, Loader2, Plus, Star, WifiOff } from "lucide-react";
 import { CreateSiteModal } from "@/components/CreateSiteModal";
@@ -38,7 +38,6 @@ const SiteLists = () => {
     organization.id !== DEFAULT_ORGANIZATION_ID &&
     (organization.subscriptionLevel === 'Pro' || organization.subscriptionLevel === 'Enterprise');
   const [searchQuery, setSearchQuery] = useState("");
-  const [filteredSites, setFilteredSites] = useState<Site[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [settingActiveProject, setSettingActiveProject] = useState(false);
   const [usingCachedData, setUsingCachedData] = useState(false);
@@ -72,22 +71,20 @@ const SiteLists = () => {
     }
   }, [isOnline, sites, cachedSites]);
 
-  // Determine which sites to display
-  // For Pro org users, only show sites that belong to their organization
-  const baseSites = usingCachedData ? cachedSites : sites;
-  // Filter sites based on organization type
-  // - Pro/Enterprise org users: See content belonging to their organization
-  // - Default/Free org users: See ONLY their own content (createdBy)
-  // - Non-signed-in users: See ONLY public content from Pro/Enterprise orgs (not default org)
-  const displaySites = user
-    ? isProOrg
-      ? baseSites.filter(site => site.organizationId === organization?.id)
-      : baseSites.filter(site => site.createdBy === user.uid) // Default org users see only their own
-    : baseSites.filter(site =>
-        site.visibility === 'public' &&
-        site.organizationId &&
-        site.organizationId !== DEFAULT_ORGANIZATION_ID
-      );
+  // Determine which sites to display (memoized — avoids new reference on every render)
+  const displaySites = useMemo(() => {
+    const baseSites = usingCachedData ? cachedSites : sites;
+    if (user) {
+      return isProOrg
+        ? baseSites.filter(site => site.organizationId === organization?.id)
+        : baseSites.filter(site => site.createdBy === user.uid);
+    }
+    return baseSites.filter(site =>
+      site.visibility === 'public' &&
+      site.organizationId &&
+      site.organizationId !== DEFAULT_ORGANIZATION_ID
+    );
+  }, [usingCachedData, cachedSites, sites, user, isProOrg, organization?.id]);
 
   // Fetch active project ID for archaeologist
   useEffect(() => {
@@ -105,20 +102,16 @@ const SiteLists = () => {
     fetchActiveProject();
   }, [user, isArchaeologist]);
 
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredSites(displaySites);
-    } else {
-      const query = searchQuery.toLowerCase();
-      const filtered = displaySites.filter(site =>
-        site.name.toLowerCase().includes(query) ||
-        site.location?.address?.toLowerCase().includes(query) ||
-        site.location?.country?.toLowerCase().includes(query) ||
-        site.location?.region?.toLowerCase().includes(query) ||
-        site.description?.toLowerCase().includes(query)
-      );
-      setFilteredSites(filtered);
-    }
+  const filteredSites = useMemo(() => {
+    if (!searchQuery.trim()) return displaySites;
+    const query = searchQuery.toLowerCase();
+    return displaySites.filter(site =>
+      site.name.toLowerCase().includes(query) ||
+      site.location?.address?.toLowerCase().includes(query) ||
+      site.location?.country?.toLowerCase().includes(query) ||
+      site.location?.region?.toLowerCase().includes(query) ||
+      site.description?.toLowerCase().includes(query)
+    );
   }, [searchQuery, displaySites]);
 
   const formatDate = (date: Date | Timestamp | undefined | any) => {

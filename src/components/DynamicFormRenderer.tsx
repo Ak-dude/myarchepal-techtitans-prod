@@ -165,7 +165,7 @@ export default function DynamicFormRenderer({
   // ---------------------------------------------------------------------------
 
   return (
-    <form onSubmit={e => e.preventDefault()} className="space-y-4">
+    <div className="space-y-4">
 
       {visibleSections
         .sort((a, b) => a.order - b.order)
@@ -250,6 +250,6 @@ export default function DynamicFormRenderer({
           )}
         </div>
       )}
-    </form>
+    </div>
   );
 }

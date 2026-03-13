@@ -169,10 +169,10 @@ export class SitesService {
         throw new Error('Firebase is not properly initialized');
       }
       const siteDoc = doc(db, 'Sites', siteId);
-      const updateData = {
-        ...updates,
-        updatedAt: Timestamp.now()
-      };
+      const updateData = Object.fromEntries(
+        Object.entries({ ...updates, updatedAt: Timestamp.now() })
+          .filter(([, v]) => v !== undefined)
+      );
 
       await updateDoc(siteDoc, updateData);
     } catch (error) {

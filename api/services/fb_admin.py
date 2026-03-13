@@ -8,10 +8,13 @@ Used by export.py and notify.py.
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+logger = logging.getLogger("archepal.services.fb_admin")
 
 # api/.env for backend secrets, then project root .env for shared vars
 _here = Path(__file__).resolve()
@@ -45,6 +48,7 @@ def _ensure_initialized() -> None:
         {"storageBucket": os.environ.get("FIREBASE_STORAGE_BUCKET", "")},
     )
     _initialized = True
+    logger.info("Firebase Admin SDK initialized (project: %s)", cred_dict.get("project_id", "unknown"))
 
 
 def get_db():

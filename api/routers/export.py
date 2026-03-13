@@ -10,6 +10,7 @@ included in the export. Otherwise only public fields are exported.
 
 import csv
 import io
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
@@ -17,6 +18,9 @@ from fastapi.responses import StreamingResponse
 
 from api.services.fb_admin import get_db, verify_id_token
 from api.services.pdf_builder import build_submission_pdf
+from api.services.crashvault import capture_exception, log_info, log_warning
+
+logger = logging.getLogger("archepal.routers.export")
 
 router = APIRouter()
 
@@ -32,19 +36,24 @@ def _get_caller_role(authorization: Optional[str]) -> str:
     user's role in Firestore. Returns 'MEMBER' if the header is absent or invalid.
     """
     if not authorization or not authorization.startswith("Bearer "):
+        logger.debug("No auth header — defaulting to MEMBER role")
         return "MEMBER"
     token = authorization.removeprefix("Bearer ").strip()
     try:
         claims = verify_id_token(token)
         uid = claims.get("uid", "")
         if not uid:
+            logger.warning("Token decoded but no uid found — defaulting to MEMBER")
             return "MEMBER"
         db = get_db()
         user_doc = db.collection("users").document(uid).get()
         if user_doc.exists:
-            return user_doc.to_dict().get("role", "MEMBER")
-    except Exception:
-        pass
+            role = user_doc.to_dict().get("role", "MEMBER")
+            logger.info("Auth resolved — uid=%s role=%s", uid, role)
+            return role
+    except Exception as e:
+        logger.warning("Token verification failed: %s", e)
+        capture_exception(e, tags=["auth", "export"], source="api.routers.export")
     return "MEMBER"
 
 
@@ -111,21 +120,36 @@ async def export_pdf(
     authorization: Optional[str] = Header(default=None),
 ):
     """Export a submission as a styled PDF report."""
+    logger.info("export-pdf requested — site=%s submission=%s", siteId, submissionId)
+
     role = _get_caller_role(authorization)
     include_protected = role in ("ORG_ADMIN", "SUPER_ADMIN")
 
     site, submission, sections, fields = _fetch_export_data(siteId, submissionId)
 
-    pdf_bytes = build_submission_pdf(
-        site=site,
-        submission=submission,
-        sections=sections,
-        fields=fields,
-        include_protected=include_protected,
-    )
+    try:
+        pdf_bytes = build_submission_pdf(
+            site=site,
+            submission=submission,
+            sections=sections,
+            fields=fields,
+            include_protected=include_protected,
+        )
+    except Exception as e:
+        logger.error("PDF build failed — site=%s: %s", siteId, e, exc_info=True)
+        capture_exception(e, tags=["export", "pdf-build"], context={"siteId": siteId, "submissionId": submissionId}, source="api.routers.export")
+        raise HTTPException(status_code=500, detail="PDF generation failed")
 
     safe_name = site.get("name", "submission").replace(" ", "_")
     filename = f"{safe_name}_{submissionId[:8]}.pdf"
+
+    logger.info("export-pdf success — site=%s file=%s size=%d bytes", siteId, filename, len(pdf_bytes))
+    log_info(
+        f"PDF exported: {filename} ({len(pdf_bytes)} bytes)",
+        tags=["export", "pdf"],
+        context={"siteId": siteId, "submissionId": submissionId, "role": role},
+        source="api.routers.export",
+    )
 
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
@@ -149,6 +173,8 @@ async def export_csv(
     Export repeating_group fields (e.g. burial records) as a CSV file.
     Uses the first repeating_group field found in the template.
     """
+    logger.info("export-csv requested — site=%s submission=%s", siteId, submissionId)
+
     role = _get_caller_role(authorization)
     include_protected = role in ("ORG_ADMIN", "SUPER_ADMIN")
 
@@ -195,6 +221,14 @@ async def export_csv(
     safe_name = site.get("name", "submission").replace(" ", "_")
     field_label = rg_field.get("label", "data").replace(" ", "_")
     filename = f"{safe_name}_{field_label}.csv"
+
+    logger.info("export-csv success — site=%s file=%s rows=%d", siteId, filename, len(rows))
+    log_info(
+        f"CSV exported: {filename} ({len(rows)} rows)",
+        tags=["export", "csv"],
+        context={"siteId": siteId, "submissionId": submissionId, "role": role, "rows": len(rows)},
+        source="api.routers.export",
+    )
 
     return StreamingResponse(
         io.BytesIO(csv_bytes),

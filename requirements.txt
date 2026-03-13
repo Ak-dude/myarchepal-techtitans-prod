@@ -1,9 +1,10 @@
 fastapi
 uvicorn[standard]
 openai
-pdfplumber
+anthropic
 python-multipart
 firebase-admin
 aiosmtplib
 python-dotenv
 reportlab
+httpx

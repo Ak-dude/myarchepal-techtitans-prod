@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { MapPin, Calendar, Users, FileText, Search, Loader2, Plus, Star, WifiOff } from "lucide-react";
+import { CreateSiteModal } from "@/components/CreateSiteModal";
 import { ResponsiveLayout } from "@/components/ResponsiveLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { AccountButton } from "@/components/AccountButton";
@@ -28,6 +29,7 @@ const SiteLists = () => {
   const { organization } = useUser();
   const { isArchaeologist } = useArchaeologist();
   const { toast } = useToast();
+  const [createModalOpen, setCreateModalOpen] = useState(false);
   const { isOnline } = useNetworkStatus();
   const { sites, loading, error, fetchSites } = useSites();
 
@@ -237,13 +239,14 @@ const SiteLists = () => {
                 <Button
                   variant="default"
                   size="sm"
-                  onClick={() => navigate("/new-site")}
+                  onClick={() => setCreateModalOpen(true)}
                   className="hidden lg:flex gap-1.5 text-sm h-9 px-4 shadow-sm hover:shadow-md transition-all"
                 >
                   <Plus className="w-4 h-4" />
                   Create Site
                 </Button>
               )}
+              <CreateSiteModal open={createModalOpen} onOpenChange={setCreateModalOpen} />
               <AccountButton />
             </div>
           </div>

@@ -80,14 +80,30 @@ export class SiteTemplatesService {
     });
   }
 
-  /** Only draft templates can be deleted. */
+  /** Only draft, non-system templates can be deleted. */
   static async deleteTemplate(templateId: string): Promise<void> {
     if (!db) throw new Error('Firebase is not properly initialized');
     const template = await this.getTemplate(templateId);
+    if (template.isSystemTemplate) {
+      throw new Error('System default templates cannot be deleted.');
+    }
     if (template.status !== 'draft') {
       throw new Error('Only draft templates can be deleted. Archive the template first.');
     }
     await deleteDoc(doc(db, 'siteTemplates', templateId));
+  }
+
+  /** Returns system-wide default templates (orgId == 'SYSTEM', status == 'published'). */
+  static async listSystemTemplates(): Promise<SiteTemplate[]> {
+    if (!db) throw new Error('Firebase is not properly initialized');
+    const q = query(
+      collection(db, 'siteTemplates'),
+      where('orgId', '==', 'SYSTEM'),
+      where('status', '==', 'published'),
+      orderBy('updatedAt', 'desc'),
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as SiteTemplate));
   }
 
   // -------------------------------------------------------------------------

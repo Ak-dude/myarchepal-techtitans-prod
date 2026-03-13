@@ -8,10 +8,15 @@ an assignment email via aiosmtplib.
 Body: { siteId, consultantId, consultantEmail }
 """
 
+import logging
 import os
 
 from fastapi import APIRouter
 from pydantic import BaseModel
+
+from api.services.crashvault import capture_exception, log_info, log_warning
+
+logger = logging.getLogger("archepal.routers.notify")
 
 router = APIRouter()
 
@@ -28,6 +33,9 @@ async def notify_consultant(body: NotifyRequest):
     Send an email notification to the assigned consultant.
     Returns { ok: true } regardless — the frontend is fire-and-forget.
     """
+    logger.info("notify-consultant called — site=%s consultant=%s email=%s",
+                body.siteId, body.consultantId, body.consultantEmail)
+
     # Look up site name and consultant display name from Firestore
     site_name = "Assigned Site"
     consultant_name = body.consultantEmail
@@ -45,8 +53,8 @@ async def notify_consultant(body: NotifyRequest):
         if user_doc.exists:
             consultant_name = user_doc.to_dict().get("displayName", consultant_name)
     except Exception as e:
-        # Non-critical — fall back to email address as name
-        print(f"[notify] Could not fetch Firestore data: {e}")
+        logger.warning("Could not fetch Firestore data for notification: %s", e)
+        capture_exception(e, tags=["notify", "firestore"], context={"siteId": body.siteId}, source="api.routers.notify")
 
     # Build email content
     app_url = os.environ.get("APP_URL", "http://localhost:8080")
@@ -99,9 +107,16 @@ async def notify_consultant(body: NotifyRequest):
             body_text=body_text,
             body_html=body_html,
         )
+        logger.info("Notification email sent — to=%s site=%s", body.consultantEmail, site_name)
+        log_info(
+            f"Email sent to {body.consultantEmail} for site '{site_name}'",
+            tags=["notify", "email"],
+            context={"siteId": body.siteId, "consultantId": body.consultantId},
+            source="api.routers.notify",
+        )
     except Exception as e:
-        # Non-critical — log but don't surface as 500 to the frontend
-        print(f"[notify] Email send failed: {e}")
+        logger.error("Email send failed — to=%s: %s", body.consultantEmail, e, exc_info=True)
+        capture_exception(e, tags=["notify", "email"], context={"siteId": body.siteId, "to": body.consultantEmail}, source="api.routers.notify")
 
     return {"ok": True}
 
@@ -116,7 +131,8 @@ async def _send_email(
 
     smtp_host = os.environ.get("SMTP_HOST", "")
     if not smtp_host:
-        print(f"[notify] SMTP_HOST not configured — skipping email to {to}")
+        logger.warning("SMTP_HOST not configured — skipping email to %s", to)
+        log_warning("SMTP not configured — email skipped", tags=["notify", "smtp"], context={"to": to}, source="api.routers.notify")
         return
 
     smtp_port = int(os.environ.get("SMTP_PORT", "587"))

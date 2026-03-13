@@ -22,7 +22,6 @@ import { evaluateVisibility } from '@/lib/conditionalLogic';
 
 import TextField from '@/components/formFields/TextField';
 import DateField from '@/components/formFields/DateField';
-import SelectField from '@/components/formFields/SelectField';
 import MultiSelectField from '@/components/formFields/MultiSelectField';
 import RadioField from '@/components/formFields/RadioField';
 import CoordinatesLatLngField from '@/components/formFields/CoordinatesLatLngField';
@@ -125,13 +124,14 @@ export default function DynamicFormRenderer({
         return <TextField key={field.id} {...props} />;
       case 'date':
         return <DateField key={field.id} {...props} />;
+      // Single-value selection → radio buttons
       case 'select':
-        return <SelectField key={field.id} {...props} />;
+      case 'radio':
+        return <RadioField key={field.id} {...props} />;
+      // Multi-value selection → checkboxes
       case 'multiselect':
       case 'checkbox':
         return <MultiSelectField key={field.id} {...props} />;
-      case 'radio':
-        return <RadioField key={field.id} {...props} />;
       case 'coordinates_latlong':
         return <CoordinatesLatLngField key={field.id} {...props} />;
       case 'coordinates_utm':

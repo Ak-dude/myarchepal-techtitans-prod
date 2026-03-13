@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { MapPin, Calendar, Edit, Share2, Loader2, Building2, Ruler, Star, ShoppingCart, DollarSign, Trash2, Image as ImageIcon, WifiOff, Globe, Lock } from "lucide-react";
+import { MapPin, Calendar, Edit, Share2, Loader2, Building2, Ruler, Star, ShoppingCart, DollarSign, Trash2, Image as ImageIcon, WifiOff, Globe, Lock, Video } from "lucide-react";
 import { ResponsiveLayout } from "@/components/ResponsiveLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { AccountButton } from "@/components/AccountButton";
@@ -647,6 +647,30 @@ const ArtifactDetails = () => {
               </p>
             </CardContent>
           </Card>
+
+          {/* Videos */}
+          {artifact.videos && artifact.videos.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Video className="w-5 h-5" />
+                  Videos
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {artifact.videos.map((url, i) => (
+                  <video
+                    key={i}
+                    src={url}
+                    controls
+                    className="w-full rounded-lg border border-border max-h-96"
+                  >
+                    Your browser does not support video playback.
+                  </video>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* AI Image Analysis */}
           {artifact.aiImageSummary && (

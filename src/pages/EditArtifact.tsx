@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Upload, Image as ImageIcon, MapPin, Calendar, Ruler, Tag, Loader2, Building2, DollarSign, Mic, MicOff, FileText } from "lucide-react";
+import { Upload, Image as ImageIcon, MapPin, Calendar, Ruler, Tag, Loader2, Building2, DollarSign, Mic, MicOff, FileText, Video, X } from "lucide-react";
 import { ResponsiveLayout } from "@/components/ResponsiveLayout";
 import { PageHeader } from "@/components/PageHeader";
 import { AccountButton } from "@/components/AccountButton";
@@ -56,6 +56,7 @@ const EditArtifact = () => {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [aiSummary, setAiSummary] = useState<string>("");
   const [analyzingImage, setAnalyzingImage] = useState(false);
+  const [selectedVideos, setSelectedVideos] = useState<File[]>([]);
   const [selected3DModel, setSelected3DModel] = useState<File | null>(null);
   const [model3DForSale, setModel3DForSale] = useState(false);
   const [model3DPrice, setModel3DPrice] = useState<string>("");
@@ -427,6 +428,27 @@ const EditArtifact = () => {
     setSelected3DModel(null);
   };
 
+  const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    const MAX_VIDEO_MB = 100;
+    for (const file of files) {
+      if (!file.type.startsWith('video/')) {
+        toast({ title: "Invalid file type", description: `"${file.name}" is not a video file`, variant: "destructive" });
+        continue;
+      }
+      if (file.size > MAX_VIDEO_MB * 1024 * 1024) {
+        toast({ title: "File too large", description: `"${file.name}" exceeds the ${MAX_VIDEO_MB} MB limit`, variant: "destructive" });
+        continue;
+      }
+      setSelectedVideos(prev => [...prev, file]);
+    }
+  };
+
+  const removeVideo = (index: number) => {
+    setSelectedVideos(prev => prev.filter((_, i) => i !== index));
+  };
+
   const analyzeImageWithAI = async (file: File) => {
     try {
       setAnalyzingImage(true);
@@ -587,6 +609,20 @@ const EditArtifact = () => {
             description: "Artifact updated but image upload failed",
             variant: "destructive"
           });
+        }
+      }
+
+      // Upload new videos if selected (appended to any existing ones)
+      if (selectedVideos.length > 0) {
+        try {
+          const existingVideos = artifact?.videos ?? [];
+          const newUrls = await Promise.all(
+            selectedVideos.map(v => ArtifactsService.uploadArtifactVideo(id, v))
+          );
+          await ArtifactsService.updateArtifactVideos(id, [...existingVideos, ...newUrls]);
+        } catch (videoError) {
+          console.error("Error uploading videos:", videoError);
+          toast({ title: "Warning", description: "Artifact saved but video upload failed", variant: "destructive" });
         }
       }
 
@@ -942,6 +978,67 @@ const EditArtifact = () => {
                   )}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Videos */}
+          <Card className="border-border">
+            <CardContent className="pt-6 space-y-3">
+              <Label className="text-foreground flex items-center gap-2">
+                <Video className="w-4 h-4" />
+                Videos
+              </Label>
+
+              {/* Existing videos */}
+              {artifact?.videos && artifact.videos.length > 0 && (
+                <ul className="space-y-1">
+                  {artifact.videos.map((url, i) => (
+                    <li key={i} className="flex items-center gap-2 text-sm bg-muted rounded px-2 py-1.5">
+                      <Video className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                      <span className="flex-1 truncate text-muted-foreground">Saved video {i + 1}</span>
+                      <a href={url} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline shrink-0">View</a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Newly selected videos */}
+              {selectedVideos.length > 0 && (
+                <ul className="space-y-1">
+                  {selectedVideos.map((v, i) => (
+                    <li key={i} className="flex items-center gap-2 text-sm bg-muted rounded px-2 py-1.5">
+                      <Video className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+                      <span className="flex-1 truncate">{v.name}</span>
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {(v.size / (1024 * 1024)).toFixed(1)} MB
+                      </span>
+                      <button type="button" aria-label={`Remove ${v.name}`} onClick={() => removeVideo(i)}>
+                        <X className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <label htmlFor="video-upload-edit">
+                <Button variant="outline" className="w-full" size="sm" type="button" asChild>
+                  <span>
+                    <Upload className="w-4 h-4 mr-2" />
+                    {(artifact?.videos?.length || 0) + selectedVideos.length > 0 ? 'Add More Videos' : 'Upload Videos'}
+                  </span>
+                </Button>
+              </label>
+              <input
+                id="video-upload-edit"
+                type="file"
+                accept="video/*"
+                multiple
+                className="hidden"
+                onChange={handleVideoSelect}
+              />
+              <p className="text-xs text-muted-foreground">
+                MP4, MOV, WebM — up to 100 MB each. New videos are appended to existing ones.
+              </p>
             </CardContent>
           </Card>
 

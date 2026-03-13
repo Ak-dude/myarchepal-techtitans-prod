@@ -1,0 +1,73 @@
+name: AI Changelog — Weekly Digest
+
+on:
+  schedule:
+    # Every Monday at 9 AM UTC
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+jobs:
+  generate-digest:
+    name: Generate weekly merged-PR digest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Collect merged PRs from last 7 days
+        id: collect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SINCE=$(date -d '7 days ago' --utc +%Y-%m-%dT%H:%M:%SZ)
+          gh pr list \
+            --state merged \
+            --json number,title,author,mergedAt,labels,body \
+            --search "merged:>=$SINCE" \
+            --limit 50 \
+          > merged_prs.json
+          echo "count=$(jq length merged_prs.json)" >> $GITHUB_OUTPUT
+
+      - name: Generate digest with DeepSeek
+        if: steps.collect.outputs.count != '0'
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: |
+          PR_DATA=$(cat merged_prs.json)
+          WEEK=$(date -d '7 days ago' +"%b %-d")
+          TODAY=$(date +"%b %-d, %Y")
+
+          PROMPT="You are writing a concise developer changelog for the ArchePal project (NC archaeology platform). Below is a JSON list of PRs merged in the past week. Write a markdown changelog section grouped by category (Frontend, Backend, Infrastructure, Docs). Use bullet points. Be factual and concise. Do NOT include PR numbers or authors. Use plain English suitable for a team standup.\n\nDate range: $WEEK – $TODAY\n\nMerged PRs:\n$PR_DATA"
+
+          RESPONSE=$(curl -s https://api.deepseek.com/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+            -d "{
+              \"model\": \"deepseek-chat\",
+              \"messages\": [{\"role\": \"user\", \"content\": $(echo "$PROMPT" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}],
+              \"max_tokens\": 800
+            }")
+
+          DIGEST=$(echo "$RESPONSE" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["choices"][0]["message"]["content"])')
+
+          # Prepend to CHANGELOG.md (create if missing)
+          HEADER="## Week of $TODAY\n\n"
+          if [ -f CHANGELOG.md ]; then
+            echo -e "$HEADER$DIGEST\n\n---\n\n$(cat CHANGELOG.md)" > CHANGELOG.md
+          else
+            echo -e "# Changelog\n\n$HEADER$DIGEST" > CHANGELOG.md
+          fi
+
+      - name: Commit changelog
+        if: steps.collect.outputs.count != '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --cached --quiet || git commit -m "chore: weekly AI changelog update [skip ci]"
+          git push

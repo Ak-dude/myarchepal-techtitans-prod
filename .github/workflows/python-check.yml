@@ -1,0 +1,35 @@
+name: CI — Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "api/**"
+      - "requirements.txt"
+  pull_request:
+    paths:
+      - "api/**"
+      - "requirements.txt"
+
+jobs:
+  python-lint:
+    name: Python syntax & style check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check for syntax errors (py_compile)
+        run: python -m py_compile api/index.py api/routers/pdf.py api/routers/export.py api/routers/notify.py api/services/claude_parser.py api/services/fb_admin.py api/services/pdf_builder.py
+
+      - name: Lint with ruff (auto-install)
+        run: |
+          pip install ruff
+          ruff check api/ --select E,F,W --ignore E501

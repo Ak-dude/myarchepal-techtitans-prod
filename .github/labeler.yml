@@ -1,0 +1,36 @@
+frontend:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/**"
+      - "index.html"
+      - "vite.config.ts"
+      - "tailwind.config.ts"
+      - "tsconfig*.json"
+
+backend:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "api/**"
+      - "requirements.txt"
+
+mobile:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "capacitor.config.ts"
+      - "ios/**"
+      - "android/**"
+
+infra:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "firestore.rules"
+      - "storage.rules"
+      - "firestore.indexes.json"
+      - "vercel.json"
+      - ".github/**"
+
+docs:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "docs/**"
+      - "*.md"

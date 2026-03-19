@@ -11,9 +11,10 @@ Body: { siteId, consultantId, consultantEmail }
 import logging
 import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
+from api.limiter import limiter
 from api.services.crashvault import capture_exception, log_info, log_warning
 
 logger = logging.getLogger("archepal.routers.notify")
@@ -28,7 +29,8 @@ class NotifyRequest(BaseModel):
 
 
 @router.post("/notify-consultant")
-async def notify_consultant(body: NotifyRequest):
+@limiter.limit("10/minute")
+async def notify_consultant(request: Request, body: NotifyRequest):
     """
     Send an email notification to the assigned consultant.
     Returns { ok: true } regardless — the frontend is fire-and-forget.

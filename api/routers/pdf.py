@@ -8,9 +8,10 @@ form template (sections + fields).
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from api.limiter import limiter
 from api.services.claude_parser import parse_pdf_with_claude
 from api.services.crashvault import capture_exception, log_info
 
@@ -33,7 +34,8 @@ class ParsePdfResponse(BaseModel):
 
 
 @router.post("/parse-pdf", response_model=ParsePdfResponse)
-async def parse_pdf(body: ParsePdfRequest):
+@limiter.limit("5/minute")
+async def parse_pdf(request: Request, body: ParsePdfRequest):
     """
     Parse an uploaded PDF form using Claude Sonnet 4.6.
     Returns sections and fields ready to be saved as a SiteTemplate.

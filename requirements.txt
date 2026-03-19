@@ -8,3 +8,4 @@ aiosmtplib
 python-dotenv
 reportlab
 httpx
+slowapi

@@ -13,9 +13,10 @@ import io
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from api.limiter import limiter
 from api.services.fb_admin import get_db, verify_id_token
 from api.services.pdf_builder import build_submission_pdf
 from api.services.crashvault import capture_exception, log_info, log_warning
@@ -114,7 +115,9 @@ def _fetch_export_data(siteId: str, submissionId: str) -> tuple:
 
 
 @router.get("/submissions/{siteId}/{submissionId}/export-pdf")
+@limiter.limit("20/minute")
 async def export_pdf(
+    request: Request,
     siteId: str,
     submissionId: str,
     authorization: Optional[str] = Header(default=None),
@@ -164,7 +167,9 @@ async def export_pdf(
 
 
 @router.get("/submissions/{siteId}/{submissionId}/export-csv")
+@limiter.limit("30/minute")
 async def export_csv(
+    request: Request,
     siteId: str,
     submissionId: str,
     authorization: Optional[str] = Header(default=None),

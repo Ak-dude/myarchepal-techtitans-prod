@@ -43,8 +43,11 @@ export class SiteSubmissionsService {
   }
 
   /** Returns the first submission for a site, or null if none exists. */
-  static async getSubmissionBySite(siteId: string): Promise<SiteSubmission | null> {
-    const q = query(this.submissionsRef(siteId), limit(1));
+  static async getSubmissionBySite(siteId: string, consultantId?: string): Promise<SiteSubmission | null> {
+    const constraints = consultantId
+      ? [where('consultantId', '==', consultantId), limit(1)]
+      : [limit(1)];
+    const q = query(this.submissionsRef(siteId), ...constraints);
     const snap = await getDocs(q);
     if (snap.empty) return null;
     const d = snap.docs[0];

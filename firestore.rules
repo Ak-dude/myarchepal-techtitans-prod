@@ -56,6 +56,15 @@ service cloud.firestore {
     match /Sites/{siteId} {
       allow read: if true;
       allow create, update, delete: if isArchaeologist();
+      // Admins can update site assignment fields (linkedTemplateId, assignedConsultantId, submissionStatus, etc.)
+      allow update: if request.auth != null && isAnyAdmin();
+      // Assigned consultant (MEMBER) can update submissionStatus only
+      allow update: if request.auth != null
+                     && isUser()
+                     && getUserData().role == 'MEMBER'
+                     && resource.data.assignedConsultantId == request.auth.uid
+                     && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['submissionStatus', 'updatedAt']);
     }
 
     // Articles Collection - Public read, archaeologist write
@@ -293,13 +302,17 @@ service cloud.firestore {
       match /fields/{fieldId} {
         allow read: if request.auth != null
                      && (get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId == 'SYSTEM'
-                         || canAccessOrg(get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId));
+                         || canAccessOrg(get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId)
+                         || (isUser() && getUserData().role == 'MEMBER'
+                             && getUserData().organizationId == get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId));
         allow write: if request.auth != null && isAnyAdmin();
       }
       match /sections/{sectionId} {
         allow read: if request.auth != null
                      && (get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId == 'SYSTEM'
-                         || canAccessOrg(get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId));
+                         || canAccessOrg(get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId)
+                         || (isUser() && getUserData().role == 'MEMBER'
+                             && getUserData().organizationId == get(/databases/$(database)/documents/siteTemplates/$(templateId)).data.orgId));
         allow write: if request.auth != null && isAnyAdmin();
       }
     }
@@ -313,16 +326,16 @@ service cloud.firestore {
       // MEMBER reads only their own submission
       allow read: if request.auth != null
                    && (isAnyAdmin()
-                       || (getUserData().role == 'MEMBER'
+                       || (isUser() && getUserData().role == 'MEMBER'
                            && resource.data.consultantId == request.auth.uid));
       // Assigned consultant (MEMBER or ORG_ADMIN) can create a submission
       allow create: if request.auth != null
-                     && (getUserData().role == 'MEMBER' || isAnyAdmin())
+                     && (isAnyAdmin() || (isUser() && getUserData().role == 'MEMBER'))
                      && request.resource.data.consultantId == request.auth.uid;
       // MEMBER can update only their own draft; ORG_ADMIN can update any (for protected fields)
       allow update: if request.auth != null
                      && (isAnyAdmin()
-                         || (getUserData().role == 'MEMBER'
+                         || (isUser() && getUserData().role == 'MEMBER'
                              && resource.data.consultantId == request.auth.uid
                              && resource.data.isDraft == true));
     }

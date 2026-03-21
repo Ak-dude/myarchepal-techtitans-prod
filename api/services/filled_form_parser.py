@@ -1,18 +1,20 @@
 """
-Filled form parser — Claude Opus 4.6 (PDF) / Claude Sonnet 4.6 (images).
+Filled form parser — GPT-4o vision.
 
 Unlike claude_parser.py (structure only) and form_image_parser.py (values only,
-needs template upfront), this service does BOTH in a single Claude call:
+needs template upfront), this service does BOTH in a single GPT-4o call:
   1. Extract the form structure (sections + fields)
   2. Read every filled-in value from this specific form instance
   3. Pull out any site name / site number visible in the form header
 
+PDFs are rendered to PNG images via pymupdf before sending.
 Used by POST /api/parse-filled-form when no template is provided upfront.
 
 Env vars required:
-  CLAUDE_API_KEY   — Anthropic API key
+  OPENAI_API_KEY   — OpenAI API key
 """
 
+import base64
 import json
 import logging
 import os
@@ -20,19 +22,33 @@ import re
 from pathlib import Path
 from typing import Any
 
-import anthropic
+import fitz  # pymupdf
+from openai import OpenAI
 from dotenv import load_dotenv
 
 logger = logging.getLogger("archepal.services.filled_form_parser")
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=True)
 
-# Use Opus for PDFs (multi-page, complex layout); Sonnet for images (faster, cheaper)
-PDF_MODEL = "claude-opus-4-6"
-IMAGE_MODEL = "claude-sonnet-4-6"
+MODEL = "gpt-4o"
+MAX_PAGES = 10
 
 PDF_MEDIA_TYPE = "application/pdf"
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
+def _render_pdf_to_images(base64_pdf: str) -> list[str]:
+    """Render each PDF page to a base64 PNG string (capped at MAX_PAGES)."""
+    pdf_bytes = base64.b64decode(base64_pdf)
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    pages: list[str] = []
+    for i, page in enumerate(doc):
+        if i >= MAX_PAGES:
+            break
+        pix = page.get_pixmap(dpi=150)
+        pages.append(base64.b64encode(pix.tobytes("png")).decode())
+    doc.close()
+    return pages
 
 # ---------------------------------------------------------------------------
 # Prompt
@@ -165,59 +181,43 @@ def parse_filled_form_with_claude(
     if media_type not in (PDF_MEDIA_TYPE, *ALLOWED_IMAGE_TYPES):
         raise ValueError(f"Unsupported media type: {media_type}")
 
-    api_key = os.environ["CLAUDE_API_KEY"]
-    client = anthropic.Anthropic(api_key=api_key)
-
-    model = PDF_MODEL if media_type == PDF_MEDIA_TYPE else IMAGE_MODEL
-
-    # Build the appropriate content block for PDF vs image
-    if media_type == PDF_MEDIA_TYPE:
-        media_block: dict[str, Any] = {
-            "type": "document",
-            "source": {
-                "type": "base64",
-                "media_type": PDF_MEDIA_TYPE,
-                "data": base64_data,
-            },
-        }
-    else:
-        media_block = {
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": media_type,
-                "data": base64_data,
-            },
-        }
-
     logger.info(
-        "parse-filled-form calling Claude — model=%s media_type=%s data_size=%d chars",
-        model, media_type, len(base64_data),
+        "parse-filled-form calling GPT-4o — media_type=%s data_size=%d chars",
+        media_type, len(base64_data),
     )
 
-    response = client.messages.create(
-        model=model,
+    # Build content blocks: one image per PDF page, or a single image block
+    content: list[dict] = []
+    if media_type == PDF_MEDIA_TYPE:
+        for page_b64 in _render_pdf_to_images(base64_data):
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{page_b64}", "detail": "high"},
+            })
+    else:
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{media_type};base64,{base64_data}", "detail": "high"},
+        })
+
+    content.append({"type": "text", "text": PARSE_FILLED_PROMPT})
+
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    response = client.chat.completions.create(
+        model=MODEL,
         max_tokens=16000,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    media_block,
-                    {"type": "text", "text": PARSE_FILLED_PROMPT},
-                ],
-            }
-        ],
+        messages=[{"role": "user", "content": content}],
     )
 
-    raw_text = response.content[0].text if response.content else ""
+    raw_text = response.choices[0].message.content or ""
 
-    if response.stop_reason == "max_tokens":
-        logger.warning("Claude hit max_tokens — attempting JSON repair")
+    if response.choices[0].finish_reason == "length":
+        logger.warning("GPT-4o hit max_tokens — attempting JSON repair")
         raw_text = _repair_truncated_json(raw_text)
 
     json_match = re.search(r"\{[\s\S]*\}", raw_text)
     if not json_match:
-        raise ValueError(f"Claude returned no JSON. Raw response:\n{raw_text[:500]}")
+        raise ValueError(f"GPT-4o returned no JSON. Raw response:\n{raw_text[:500]}")
 
     parsed = json.loads(json_match.group())
 

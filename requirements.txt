@@ -1,7 +1,7 @@
 fastapi
 uvicorn[standard]
 openai
-anthropic
+pymupdf
 python-multipart
 firebase-admin
 aiosmtplib

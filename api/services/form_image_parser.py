@@ -1,11 +1,11 @@
 """
-Form image parser — Claude Sonnet 4.6 (vision).
+Form image parser — GPT-4o vision.
 
-Sends a photo/scan of a filled paper form to Claude along with the template
+Sends a photo/scan of a filled paper form to GPT-4o along with the template
 field definitions, and returns extracted values as { fieldId: value } JSON.
 
 Env vars required:
-  CLAUDE_API_KEY   — Anthropic API key
+  OPENAI_API_KEY   — OpenAI API key
 """
 
 import json
@@ -14,11 +14,11 @@ import os
 import re
 from typing import Any
 
-import anthropic
+from openai import OpenAI
 
 logger = logging.getLogger("archepal.services.form_image_parser")
 
-MODEL = "claude-sonnet-4-6"
+MODEL = "gpt-4o"
 
 ALLOWED_MEDIA_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
@@ -67,10 +67,9 @@ def parse_form_image_with_claude(
     if media_type not in ALLOWED_MEDIA_TYPES:
         raise ValueError(f"Unsupported media type: {media_type}")
 
-    api_key = os.environ["CLAUDE_API_KEY"]
-    client = anthropic.Anthropic(api_key=api_key)
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-    response = client.messages.create(
+    response = client.chat.completions.create(
         model=MODEL,
         max_tokens=4000,
         messages=[
@@ -78,11 +77,10 @@ def parse_form_image_with_claude(
                 "role": "user",
                 "content": [
                     {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": base64_image,
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{media_type};base64,{base64_image}",
+                            "detail": "high",
                         },
                     },
                     {
@@ -94,10 +92,10 @@ def parse_form_image_with_claude(
         ],
     )
 
-    raw_text = response.content[0].text if response.content else ""
+    raw_text = response.choices[0].message.content or ""
 
     json_match = re.search(r"\{[\s\S]*\}", raw_text)
     if not json_match:
-        raise ValueError(f"Claude returned no JSON. Raw response:\n{raw_text[:500]}")
+        raise ValueError(f"GPT-4o returned no JSON. Raw response:\n{raw_text[:500]}")
 
     return json.loads(json_match.group())

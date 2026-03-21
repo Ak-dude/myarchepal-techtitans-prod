@@ -1,14 +1,14 @@
 """
-PDF parser pipeline — Claude Opus 4.6 (single-step).
+PDF parser pipeline — GPT-4o vision (single-step).
 
-Sends the raw PDF bytes directly to Claude as a native document block.
-Claude reads the PDF and returns a fully structured SiteTemplate JSON
-in one call — no separate OCR/extraction step required.
+Renders each PDF page to a PNG image using pymupdf, then sends all page
+images to GPT-4o in one call. Returns a fully structured SiteTemplate JSON.
 
 Env vars required:
-  CLAUDE_API_KEY   — Anthropic API key
+  OPENAI_API_KEY   — OpenAI API key
 """
 
+import base64
 import json
 import logging
 import os
@@ -16,7 +16,8 @@ import re
 from pathlib import Path
 from typing import Any
 
-import anthropic
+import fitz  # pymupdf
+from openai import OpenAI
 from dotenv import load_dotenv
 
 from api.services.crashvault import capture_exception, log_info
@@ -26,7 +27,8 @@ logger = logging.getLogger("archepal.services.claude_parser")
 # Load env vars from project root .env (two levels up from api/services/)
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-MODEL = "claude-opus-4-6"
+MODEL = "gpt-4o"
+MAX_PAGES = 10  # cap to avoid excessive token usage
 
 # ---------------------------------------------------------------------------
 # Structuring prompt
@@ -114,44 +116,41 @@ Additional rules:
 
 def parse_pdf_with_claude(base64_pdf: str) -> dict[str, Any]:
     """
-    Send the PDF directly to Claude Opus 4.6 as a native document block.
-    Claude reads the full PDF and returns a structured SiteTemplate JSON.
+    Render each PDF page to PNG via pymupdf, then send all page images to
+    GPT-4o vision. Returns a structured SiteTemplate JSON.
     """
-    api_key = os.environ["CLAUDE_API_KEY"]
-    client = anthropic.Anthropic(api_key=api_key)
+    pdf_bytes = base64.b64decode(base64_pdf)
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
 
-    response = client.messages.create(
+    content: list[dict] = []
+    for i, page in enumerate(doc):
+        if i >= MAX_PAGES:
+            break
+        pix = page.get_pixmap(dpi=150)
+        page_b64 = base64.b64encode(pix.tobytes("png")).decode()
+        content.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{page_b64}", "detail": "high"},
+        })
+    doc.close()
+
+    content.append({"type": "text", "text": PARSE_PROMPT})
+
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    response = client.chat.completions.create(
         model=MODEL,
         max_tokens=16000,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "application/pdf",
-                            "data": base64_pdf,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": PARSE_PROMPT,
-                    },
-                ],
-            }
-        ],
+        messages=[{"role": "user", "content": content}],
     )
 
-    raw_text = response.content[0].text if response.content else ""
+    raw_text = response.choices[0].message.content or ""
 
-    if response.stop_reason == "max_tokens":
+    if response.choices[0].finish_reason == "length":
         raw_text = _repair_truncated_json(raw_text)
 
     json_match = re.search(r"\{[\s\S]*\}", raw_text)
     if not json_match:
-        raise ValueError(f"Claude returned no JSON. Raw response:\n{raw_text[:500]}")
+        raise ValueError(f"GPT-4o returned no JSON. Raw response:\n{raw_text[:500]}")
 
     return json.loads(json_match.group())
 

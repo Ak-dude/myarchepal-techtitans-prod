@@ -357,16 +357,17 @@ Phase 4 (form fill + offline) → Phase 6 (routing) → Phase 7 (validation)
 - ✅ F.1 — Routes + Nav (`src/App.tsx`, `src/components/BottomNav.tsx`, `src/pages/MyAssignments.tsx`) — `/upload-filled-form` route under `<ProtectedRoute>`; BottomNav "Upload Paper Form" in MEMBER + admin sections; MyAssignments header CTA button; `pending_template` added to `STATUS_CONFIG` with "Awaiting Template" label
 
 **Recent cleanup (post-Phase 7):**
-- ✅ Switched PDF parsing to **Claude Opus 4.6 via Anthropic API** — removed LLMWhisperer + Azure AI Foundry pipeline
+- ✅ Switched PDF/image parsing to **GPT-4o via OpenAI API** — PDFs rendered to images via pymupdf
 - ✅ Removed unused env vars `AZURE_FOUNDY_PROJECT_ENDPOINT`, `AZURE_PROJECT_API_KEY` from `.env`
 - ✅ Deleted `docs/llmwhisperer-nextjs-guide.md` (no longer relevant)
 - ✅ Updated `TemplateImportPDF.tsx` UI copy to remove model-specific branding
 
 **AI model:**
-- PDF form extraction — **Claude Opus 4.6 via Anthropic API** (single step, no OCR pre-processing)
-  - Base64 PDF sent as native `document` content block; Claude reads layout, checkboxes, tables directly
-  - Env var: `CLAUDE_API_KEY`
-  - SDK: `anthropic` Python package (`api/services/claude_parser.py`)
+- PDF/image form extraction — **GPT-4o via OpenAI API**
+  - PDFs rendered to PNG images via `pymupdf` (150 DPI, max 10 pages), sent as vision content blocks
+  - Images sent as base64 data URIs with `detail: "high"`
+  - Env var: `OPENAI_API_KEY`
+  - SDK: `openai` Python package; `pymupdf` for PDF rendering
   - `max_tokens: 16000`; truncation repair helper for edge cases
 - Frontend artifact/article image analysis (`src/services/azure-openai.ts`) uses GPT-4o via Azure OpenAI
   - Env vars: `VITE_AZURE_OPENAI_ENDPOINT`, `VITE_AZURE_OPENAI_API_KEY`, `VITE_AZURE_OPENAI_DEPLOYMENT_NAME`, `VITE_AZURE_OPENAI_API_VERSION`

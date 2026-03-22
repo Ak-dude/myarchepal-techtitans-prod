@@ -5,7 +5,10 @@ Renders each PDF page to a PNG image using pymupdf, then sends all page
 images to GPT-4o in one call. Returns a fully structured SiteTemplate JSON.
 
 Env vars required:
-  OPENAI_API_KEY   — OpenAI API key
+  VITE_AZURE_OPENAI_ENDPOINT         — Azure OpenAI endpoint
+  VITE_AZURE_OPENAI_API_KEY          — Azure OpenAI API key
+  VITE_AZURE_OPENAI_DEPLOYMENT_NAME  — deployment name (e.g. gpt-5.4-mini)
+  VITE_AZURE_OPENAI_API_VERSION      — API version
 """
 
 import base64
@@ -17,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import fitz  # pymupdf
-from openai import OpenAI
+from openai import AzureOpenAI
 from dotenv import load_dotenv
 
 from api.services.crashvault import capture_exception, log_info
@@ -27,7 +30,7 @@ logger = logging.getLogger("archepal.services.claude_parser")
 # Load env vars from project root .env (two levels up from api/services/)
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-MODEL = "gpt-4o"
+MODEL = os.environ.get("VITE_AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-5.4-mini")
 MAX_PAGES = 10  # cap to avoid excessive token usage
 
 # ---------------------------------------------------------------------------
@@ -136,10 +139,15 @@ def parse_pdf_with_claude(base64_pdf: str) -> dict[str, Any]:
 
     content.append({"type": "text", "text": PARSE_PROMPT})
 
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    client = AzureOpenAI(
+        azure_endpoint=os.environ["VITE_AZURE_OPENAI_ENDPOINT"],
+        api_key=os.environ["VITE_AZURE_OPENAI_API_KEY"],
+        api_version=os.environ.get("VITE_AZURE_OPENAI_API_VERSION", "2025-01-01-preview"),
+    )
     response = client.chat.completions.create(
         model=MODEL,
-        max_tokens=16000,
+        max_completion_tokens=128000,
+        response_format={"type": "json_object"},
         messages=[{"role": "user", "content": content}],
     )
 
@@ -152,7 +160,18 @@ def parse_pdf_with_claude(base64_pdf: str) -> dict[str, Any]:
     if not json_match:
         raise ValueError(f"GPT-4o returned no JSON. Raw response:\n{raw_text[:500]}")
 
-    return json.loads(json_match.group())
+    json_str = json_match.group()
+    try:
+        result = json.loads(json_str)
+    except json.JSONDecodeError:
+        logger.warning("GPT-4o returned malformed JSON — attempting repair")
+        json_str = _repair_truncated_json(json_str)
+        try:
+            result = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"GPT-4o returned invalid JSON after repair attempt: {e}")
+
+    return _normalize_response(result)
 
 
 # ---------------------------------------------------------------------------
@@ -195,3 +214,233 @@ def _repair_truncated_json(raw: str) -> str:
         raw += ']' if opener == '[' else '}'
 
     return raw
+
+
+# ---------------------------------------------------------------------------
+# Response normalizer — handles gpt-5.4-mini pages[] format and type aliases
+# ---------------------------------------------------------------------------
+
+_FIELD_TYPE_MAP: dict[str, str] = {
+    "checkbox_group": "multiselect",
+    "date_or_text":   "date",
+    "coordinate":     "text",
+    "group":          "text",       # fallback; handled explicitly below
+    "table":          "repeating_group",
+    # pass-through types (already valid)
+    "text": "text", "textarea": "textarea", "number": "number", "date": "date",
+    "select": "select", "multiselect": "multiselect", "radio": "radio", "checkbox": "checkbox",
+    "coordinates_latlong": "coordinates_latlong", "coordinates_utm": "coordinates_utm",
+    "file_upload": "file_upload", "repeating_group": "repeating_group",
+    "section_header": "section_header", "divider": "divider",
+}
+
+
+def _map_field_type(raw_type: str) -> str:
+    return _FIELD_TYPE_MAP.get(raw_type, "text")
+
+
+def _normalize_response(raw: dict) -> dict:
+    """
+    Accepts either the native {templateName, siteType, sections[], fields[]} format
+    or the pages[]-based format that gpt-5.4-mini may return without the strict prompt.
+    Always returns the native format expected by the router.
+    """
+    if "pages" in raw and "sections" not in raw:
+        logger.info("claude_parser: detected pages[] format — normalizing to sections/fields")
+        return _convert_pages_format(raw)
+
+    # Already in native format — light-normalize field types in case of aliases
+    if "fields" in raw:
+        raw["fields"] = [_normalize_field(f) for f in raw["fields"]]
+    return raw
+
+
+def _normalize_field(field: dict) -> dict:
+    """Fix fieldType if model used 'type' key or an aliased type name."""
+    if "fieldType" not in field and "type" in field:
+        field["fieldType"] = _map_field_type(field.pop("type"))
+    elif "fieldType" in field:
+        field["fieldType"] = _map_field_type(field["fieldType"])
+    if "id" not in field and "name" in field:
+        field["id"] = field["name"]
+    return field
+
+
+def _convert_pages_format(raw: dict) -> dict:
+    """Convert pages[] → {templateName, siteType, sections[], fields[]}."""
+    sections: list[dict] = []
+    fields: list[dict] = []
+    seen_sections: dict[str, str] = {}
+    section_order = 0
+    field_order = 0
+
+    for page_obj in raw.get("pages", []):
+        section_title = page_obj.get("section", "Unnamed Section")
+        is_protected = any(
+            kw in section_title.lower()
+            for kw in ["office use", "admin", "restricted", "archaeology use"]
+        )
+
+        if section_title not in seen_sections:
+            section_id = f"section-{section_order}"
+            seen_sections[section_title] = section_id
+            sections.append({
+                "id": section_id,
+                "title": section_title,
+                "order": section_order,
+                "isCollapsible": True,
+                "isProtected": is_protected,
+            })
+            section_order += 1
+
+        section_id = seen_sections[section_title]
+
+        # Section-level table (e.g. Burial/Marker Table on page 5)
+        if page_obj.get("type") == "table" or "columns" in page_obj:
+            columns = page_obj.get("columns", [])
+            group_fields = [
+                {
+                    "id": col.get("name", f"col-{i}"),
+                    "sectionId": section_id,
+                    "label": col.get("label", ""),
+                    "fieldType": _map_field_type(col.get("type", "text")),
+                    "order": i,
+                    "isRequired": False,
+                    "isHidden": False,
+                    "isProtected": False,
+                    "options": col.get("options") or None,
+                    "placeholder": None,
+                    "helpText": None,
+                    "conditionalLogic": None,
+                }
+                for i, col in enumerate(columns)
+            ]
+            table_id = section_title.lower().replace(" ", "-").replace("/", "-")
+            fields.append({
+                "id": table_id,
+                "sectionId": section_id,
+                "label": section_title,
+                "fieldType": "repeating_group",
+                "order": field_order,
+                "isRequired": False,
+                "isHidden": False,
+                "isProtected": is_protected,
+                "options": None,
+                "placeholder": None,
+                "helpText": None,
+                "conditionalLogic": None,
+                "groupFields": group_fields,
+            })
+            field_order += 1
+            continue
+
+        # Regular fields list
+        for field_obj in page_obj.get("fields", []):
+            field_type = field_obj.get("type", "text")
+            field_name = field_obj.get("name") or field_obj.get("id") or f"field-{field_order}"
+            field_label = field_obj.get("label", "")
+            options = field_obj.get("options") or None
+
+            if field_type == "group":
+                subfields = field_obj.get("subfields", [])
+                sub_names = {sf.get("name", "") for sf in subfields}
+
+                if "latitude" in sub_names or "longitude" in sub_names:
+                    # Lat/lng coordinate group
+                    fields.append({
+                        "id": field_name,
+                        "sectionId": section_id,
+                        "label": field_label,
+                        "fieldType": "coordinates_latlong",
+                        "order": field_order,
+                        "isRequired": False,
+                        "isHidden": False,
+                        "isProtected": is_protected,
+                        "options": None,
+                        "placeholder": None,
+                        "helpText": None,
+                        "conditionalLogic": None,
+                    })
+                    field_order += 1
+                    if "utm_zone" in sub_names or "utm_easting" in sub_names:
+                        fields.append({
+                            "id": field_name + "-utm",
+                            "sectionId": section_id,
+                            "label": field_label + " (UTM)",
+                            "fieldType": "coordinates_utm",
+                            "order": field_order,
+                            "isRequired": False,
+                            "isHidden": False,
+                            "isProtected": is_protected,
+                            "options": None,
+                            "placeholder": None,
+                            "helpText": None,
+                            "conditionalLogic": None,
+                        })
+                        field_order += 1
+                else:
+                    # Generic group — flatten subfields as individual text fields
+                    for sf in subfields:
+                        sf_name = sf.get("name", f"field-{field_order}")
+                        fields.append({
+                            "id": sf_name,
+                            "sectionId": section_id,
+                            "label": sf.get("label", ""),
+                            "fieldType": _map_field_type(sf.get("type", "text")),
+                            "order": field_order,
+                            "isRequired": False,
+                            "isHidden": False,
+                            "isProtected": is_protected,
+                            "options": sf.get("options") or None,
+                            "placeholder": None,
+                            "helpText": None,
+                            "conditionalLogic": None,
+                        })
+                        field_order += 1
+            else:
+                normalized_field: dict = {
+                    "id": field_name,
+                    "sectionId": section_id,
+                    "label": field_label,
+                    "fieldType": _map_field_type(field_type),
+                    "order": field_order,
+                    "isRequired": field_obj.get("isRequired", False),
+                    "isHidden": False,
+                    "isProtected": is_protected,
+                    "options": options,
+                    "placeholder": None,
+                    "helpText": None,
+                    "conditionalLogic": None,
+                }
+                fields.append(normalized_field)
+                field_order += 1
+
+                # additional_field → separate field shown conditionally on "Other"
+                additional = field_obj.get("additional_field")
+                if additional:
+                    fields.append({
+                        "id": additional.get("name", f"field-{field_order}"),
+                        "sectionId": section_id,
+                        "label": additional.get("label", ""),
+                        "fieldType": _map_field_type(additional.get("type", "text")),
+                        "order": field_order,
+                        "isRequired": False,
+                        "isHidden": False,
+                        "isProtected": is_protected,
+                        "options": None,
+                        "placeholder": None,
+                        "helpText": None,
+                        "conditionalLogic": {
+                            "triggerFieldId": field_name,
+                            "triggerValue": "Other",
+                            "action": "show",
+                        },
+                    })
+                    field_order += 1
+
+    return {
+        "templateName": raw.get("document_title") or raw.get("templateName") or "Untitled Form",
+        "siteType": raw.get("siteType") or "Unknown",
+        "sections": sections,
+        "fields": fields,
+    }

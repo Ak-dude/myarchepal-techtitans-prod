@@ -5,7 +5,6 @@ import {
   getDoc,
   addDoc,
   updateDoc,
-  deleteDoc,
   query,
   where,
   orderBy,
@@ -52,6 +51,8 @@ export interface Site {
   assignedConsultantId?: string;
   assignedConsultantEmail?: string;
   submissionStatus?: SubmissionStatus;
+  // Soft delete
+  deletedAt?: Timestamp;
 }
 
 // Collection reference - with error handling
@@ -181,14 +182,18 @@ export class SitesService {
     }
   }
 
-  // Delete a site
+  // Soft-delete a site (sets deletedAt + archives — never removes the document)
   static async deleteSite(siteId: string): Promise<void> {
     try {
       if (!db) {
         throw new Error('Firebase is not properly initialized');
       }
       const siteDoc = doc(db, 'Sites', siteId);
-      await deleteDoc(siteDoc);
+      await updateDoc(siteDoc, {
+        deletedAt: Timestamp.now(),
+        status: 'archived',
+        updatedAt: Timestamp.now(),
+      });
     } catch (error) {
       console.error('Error deleting site:', error);
       throw error;

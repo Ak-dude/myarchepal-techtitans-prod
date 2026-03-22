@@ -1,7 +1,5 @@
-import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { Upload, Plus } from 'lucide-react';
 
 import {
   Dialog,
@@ -12,22 +10,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Upload } from 'lucide-react';
-
-import { SiteTemplatesService } from '@/services/siteTemplates';
-import { useUser } from '@/hooks/use-user';
-import type { SiteTemplate } from '@/types/siteTemplates';
-
-// ---------------------------------------------------------------------------
 
 interface CreateSiteModalProps {
   open: boolean;
@@ -36,103 +18,51 @@ interface CreateSiteModalProps {
 
 export function CreateSiteModal({ open, onOpenChange }: CreateSiteModalProps) {
   const navigate = useNavigate();
-  const { organization } = useUser();
 
-  const [templates, setTemplates] = useState<SiteTemplate[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('none');
-
-  // Load published org templates + system default templates each time the modal opens
-  useEffect(() => {
-    if (!open || !organization?.id) return;
-    setLoading(true);
-    setSelectedTemplateId('none');
-    Promise.all([
-      SiteTemplatesService.listTemplates(organization.id).catch(() => [] as SiteTemplate[]),
-      SiteTemplatesService.listSystemTemplates().catch(() => [] as SiteTemplate[]),
-    ])
-      .then(([orgTemplates, systemTemplates]) => {
-        const published = orgTemplates.filter(t => t.status === 'published');
-        // System templates first, then org templates
-        setTemplates([...systemTemplates, ...published]);
-      })
-      .finally(() => setLoading(false));
-  }, [open, organization?.id]);
-
-  const handleContinue = () => {
+  const go = (path: string) => {
     onOpenChange(false);
-    if (selectedTemplateId === 'upload_filled_form') {
-      navigate('/upload-filled-form');
-    } else {
-      const params = selectedTemplateId !== 'none' ? `?templateId=${selectedTemplateId}` : '';
-      navigate(`/new-site${params}`);
-    }
+    navigate(path);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>New Archaeological Site</DialogTitle>
           <DialogDescription>
-            Choose a form template, or upload an already-filled paper form.
+            Create a new site and fill out its form, or digitize an existing paper form.
           </DialogDescription>
         </DialogHeader>
 
         <div className="py-2 space-y-3">
-          <Label htmlFor="template-select" className="text-sm font-medium leading-snug">
-            What type of archaeological site would you like to create?
-          </Label>
-
-          {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading templates…
+          <Button
+            variant="outline"
+            className="w-full justify-start gap-3 h-14 text-left"
+            onClick={() => go('/new-site')}
+          >
+            <Plus className="h-5 w-5 text-primary shrink-0" />
+            <div>
+              <p className="font-medium text-sm">Create New Site</p>
+              <p className="text-xs text-muted-foreground">Fill in site details and choose a form template</p>
             </div>
-          ) : (
-            <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
-              <SelectTrigger id="template-select">
-                <SelectValue placeholder="Select a template" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No template</SelectItem>
-                {templates.map(t => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.isSystemTemplate ? '⭐ ' : ''}{t.name}
-                    {t.siteType ? ` — ${t.siteType}` : ''}
-                  </SelectItem>
-                ))}
-                <SelectSeparator />
-                <SelectItem value="upload_filled_form">
-                  <span className="flex items-center gap-2">
-                    <Upload className="h-3.5 w-3.5 text-primary" />
-                    Upload Filled Form
-                  </span>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          )}
+          </Button>
 
-          {templates.length === 0 && !loading && (
-            <p className="text-xs text-muted-foreground">
-              No published templates yet.{' '}
-              <button
-                className="underline text-primary"
-                onClick={() => { onOpenChange(false); navigate('/templates'); }}
-              >
-                Create one first
-              </button>{' '}
-              or continue without a template.
-            </p>
-          )}
+          <Button
+            variant="outline"
+            className="w-full justify-start gap-3 h-14 text-left"
+            onClick={() => go('/upload-filled-form')}
+          >
+            <Upload className="h-5 w-5 text-primary shrink-0" />
+            <div>
+              <p className="font-medium text-sm">Upload Filled Paper Form</p>
+              <p className="text-xs text-muted-foreground">Digitize an already-completed paper form using AI</p>
+            </div>
+          </Button>
         </div>
 
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
-          </Button>
-          <Button onClick={handleContinue} disabled={loading}>
-            {selectedTemplateId === 'upload_filled_form' ? 'Upload Form' : 'Continue'}
           </Button>
         </DialogFooter>
       </DialogContent>

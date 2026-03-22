@@ -11,7 +11,10 @@ PDFs are rendered to PNG images via pymupdf before sending.
 Used by POST /api/parse-filled-form when no template is provided upfront.
 
 Env vars required:
-  OPENAI_API_KEY   — OpenAI API key
+  VITE_AZURE_OPENAI_ENDPOINT         — Azure OpenAI endpoint
+  VITE_AZURE_OPENAI_API_KEY          — Azure OpenAI API key
+  VITE_AZURE_OPENAI_DEPLOYMENT_NAME  — deployment name (e.g. gpt-5.4-mini)
+  VITE_AZURE_OPENAI_API_VERSION      — API version
 """
 
 import base64
@@ -23,14 +26,14 @@ from pathlib import Path
 from typing import Any
 
 import fitz  # pymupdf
-from openai import OpenAI
+from openai import AzureOpenAI
 from dotenv import load_dotenv
 
 logger = logging.getLogger("archepal.services.filled_form_parser")
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=True)
 
-MODEL = "gpt-4o"
+MODEL = os.environ.get("VITE_AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-5.4-mini")
 MAX_PAGES = 10
 
 PDF_MEDIA_TYPE = "application/pdf"
@@ -95,8 +98,10 @@ Additional structure rules:
   { "triggerFieldId": "<id>", "triggerValue": "<value>", "action": "show" }
 
 PART 2 — VALUES
-For each field extracted in Part 1, also read the value that was written, checked, or
-selected on THIS specific filled form. Use the exact field label as the key in "formData".
+For EVERY field extracted in Part 1, read the value that was written, checked, or selected
+on THIS specific filled form and add it to the top-level "formData" object.
+Use the EXACT field label string as the key. Do NOT embed values inside field objects.
+Do NOT use "observed_value", "value", or any other per-field key — only "formData".
 
 Value rules:
 - text / textarea / number: the written value as a string (number type → still a string here)
@@ -108,6 +113,7 @@ Value rules:
 - repeating_group: an array of row objects, each row being { "subFieldLabel": value, ... }
 - If a field is blank, illegible, or not visible: OMIT that key entirely — no null values
 - Only include fields you can actually read from the form
+- formData MUST contain at least one entry if any values are visible on the form
 
 SITE METADATA
 Also look at the form header, top section, or any identifying information and extract:
@@ -202,10 +208,15 @@ def parse_filled_form_with_claude(
 
     content.append({"type": "text", "text": PARSE_FILLED_PROMPT})
 
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    client = AzureOpenAI(
+        azure_endpoint=os.environ["VITE_AZURE_OPENAI_ENDPOINT"],
+        api_key=os.environ["VITE_AZURE_OPENAI_API_KEY"],
+        api_version=os.environ.get("VITE_AZURE_OPENAI_API_VERSION", "2025-01-01-preview"),
+    )
     response = client.chat.completions.create(
         model=MODEL,
-        max_tokens=16000,
+        max_completion_tokens=128000,
+        response_format={"type": "json_object"},
         messages=[{"role": "user", "content": content}],
     )
 
@@ -219,11 +230,36 @@ def parse_filled_form_with_claude(
     if not json_match:
         raise ValueError(f"GPT-4o returned no JSON. Raw response:\n{raw_text[:500]}")
 
-    parsed = json.loads(json_match.group())
+    json_str = json_match.group()
+    try:
+        parsed = json.loads(json_str)
+    except json.JSONDecodeError:
+        logger.warning("GPT-4o returned malformed JSON — attempting repair")
+        json_str = _repair_truncated_json(json_str)
+        try:
+            parsed = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"GPT-4o returned invalid JSON after repair attempt: {e}")
 
     sections = parsed.get("sections", [])
     fields = parsed.get("fields", [])
     form_data = parsed.get("formData", {})
+
+    # Fallback: if model embedded values as observed_value/value per field instead of
+    # populating the top-level formData dict (gpt-5.4-mini natural style), extract them.
+    if not form_data:
+        for field in fields:
+            value = field.get("observed_value") or field.get("value")
+            if value is not None:
+                label = field.get("label", "")
+                if label:
+                    form_data[label] = value
+        if form_data:
+            logger.info(
+                "parse-filled-form: formData was empty — extracted %d values from "
+                "field observed_value/value fallback",
+                len(form_data),
+            )
 
     logger.info(
         "parse-filled-form success — sections=%d fields=%d form_data_keys=%d",

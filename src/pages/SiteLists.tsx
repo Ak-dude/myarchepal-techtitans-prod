@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { MapPin, Calendar, Users, FileText, Search, Loader2, Plus, Star, WifiOff } from "lucide-react";
+import { MapPin, Calendar, Users, FileText, Search, Loader2, Plus, Star, WifiOff, Trash2 } from "lucide-react";
 import { CreateSiteModal } from "@/components/CreateSiteModal";
 import { ResponsiveLayout } from "@/components/ResponsiveLayout";
 import { PageHeader } from "@/components/PageHeader";
@@ -10,8 +10,18 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useSites } from "@/hooks/use-sites";
-import { Site } from "@/services/sites";
+import { Site, SitesService } from "@/services/sites";
 import { useAuth } from "@/hooks/use-auth";
 import { useUser } from "@/hooks/use-user";
 import { useArchaeologist } from "@/hooks/use-archaeologist";
@@ -26,7 +36,7 @@ import { parseDate } from "@/lib/utils";
 const SiteLists = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { organization } = useUser();
+  const { organization, isAdmin } = useUser();
   const { isArchaeologist } = useArchaeologist();
   const { toast } = useToast();
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -40,6 +50,8 @@ const SiteLists = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [settingActiveProject, setSettingActiveProject] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [usingCachedData, setUsingCachedData] = useState(false);
   const [cachedSites, setCachedSites] = useState<Site[]>([]);
 
@@ -73,7 +85,7 @@ const SiteLists = () => {
 
   // Determine which sites to display (memoized — avoids new reference on every render)
   const displaySites = useMemo(() => {
-    const baseSites = usingCachedData ? cachedSites : sites;
+    const baseSites = (usingCachedData ? cachedSites : sites).filter(site => !site.deletedAt);
     if (user) {
       return isProOrg
         ? baseSites.filter(site => site.organizationId === organization?.id)
@@ -178,6 +190,21 @@ const SiteLists = () => {
       });
     } finally {
       setSettingActiveProject(false);
+    }
+  };
+
+  const handleDeleteSite = async (siteId: string) => {
+    setDeletingId(siteId);
+    try {
+      await SitesService.deleteSite(siteId);
+      toast({ title: "Site deleted", description: "The site has been archived and removed from the list." });
+      fetchSites();
+    } catch (err) {
+      console.error(err);
+      toast({ title: "Error", description: "Failed to delete the site. Please try again.", variant: "destructive" });
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
     }
   };
 
@@ -365,6 +392,20 @@ const SiteLists = () => {
                                 />
                               </Button>
                             )}
+                            {isAdmin && site.organizationId === organization?.id && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 lg:h-10 lg:w-10 shrink-0 rounded-full hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(site.id!); }}
+                                disabled={deletingId === site.id}
+                              >
+                                {deletingId === site.id
+                                  ? <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                                  : <Trash2 className="w-4 h-4 text-destructive" />
+                                }
+                              </Button>
+                            )}
                           </div>
 
                           <div className="space-y-0.5 sm:space-y-1 mb-2 sm:mb-3">
@@ -414,6 +455,26 @@ const SiteLists = () => {
             )}
           </div>
       </div>
+
+      <AlertDialog open={!!confirmDeleteId} onOpenChange={(open) => { if (!open) setConfirmDeleteId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete site?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This site will be archived and removed from the list. This action can be reversed by a Super Admin.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+              onClick={() => confirmDeleteId && handleDeleteSite(confirmDeleteId)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ResponsiveLayout>
   );
 };

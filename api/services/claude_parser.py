@@ -145,7 +145,7 @@ def parse_pdf_with_claude(base64_pdf: str) -> dict[str, Any]:
     )
     response = client.chat.completions.create(
         model=MODEL,
-        max_completion_tokens=128000,
+        max_completion_tokens=16384,
         response_format={"type": "json_object"},
         messages=[{"role": "user", "content": content}],
     )

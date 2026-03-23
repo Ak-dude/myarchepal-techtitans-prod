@@ -19,7 +19,7 @@ from fastapi.responses import StreamingResponse
 from api.limiter import limiter
 from api.services.fb_admin import get_db, verify_id_token
 from api.services.pdf_builder import build_submission_pdf
-from api.services.crashvault import capture_exception, log_info, log_warning
+from api.services.crashvault import capture_exception, log_info
 
 logger = logging.getLogger("archepal.routers.export")
 

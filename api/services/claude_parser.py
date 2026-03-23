@@ -23,7 +23,6 @@ import fitz  # pymupdf
 from openai import AzureOpenAI
 from dotenv import load_dotenv
 
-from api.services.crashvault import capture_exception, log_info
 
 logger = logging.getLogger("archepal.services.claude_parser")
 

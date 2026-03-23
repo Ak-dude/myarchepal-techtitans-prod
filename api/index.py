@@ -9,7 +9,6 @@ import logging
 from pathlib import Path
 
 from dotenv import load_dotenv
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 # Load backend secrets from api/.env (local dev only — no-op on Vercel)
@@ -28,13 +27,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("archepal.api")
 
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from api.middleware.logging_middleware import LoggingMiddleware
-from api.routers import pdf, export, notify, form_image, filled_form, sites
-from api.limiter import limiter
-from api.services.crashvault import log_warning
+from fastapi import FastAPI, Request  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+from api.middleware.logging_middleware import LoggingMiddleware  # noqa: E402
+from api.routers import pdf, export, notify, form_image, filled_form, sites  # noqa: E402
+from api.limiter import limiter  # noqa: E402
+from api.services.crashvault import log_warning  # noqa: E402
 
 app = FastAPI(title="ArchePal API", version="1.0.0")
 

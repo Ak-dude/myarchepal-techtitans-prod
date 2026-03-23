@@ -21,9 +21,9 @@ _here = Path(__file__).resolve()
 load_dotenv(_here.parents[1] / ".env")   # api/.env
 load_dotenv(_here.parents[2] / ".env")   # project root .env (won't override already-set vars)
 
-import firebase_admin
-from firebase_admin import auth as fb_auth, credentials
-from firebase_admin import firestore as fb_firestore
+import firebase_admin  # noqa: E402
+from firebase_admin import auth as fb_auth, credentials  # noqa: E402
+from firebase_admin import firestore as fb_firestore  # noqa: E402
 
 _initialized = False
 

@@ -55,7 +55,7 @@ service cloud.firestore {
     // Sites Collection - Public read, archaeologist write
     match /Sites/{siteId} {
       allow read: if true;
-      allow create, update, delete: if isArchaeologist();
+      allow create, update, delete: if isArchaeologist() || isAnyAdmin();
       // Admins can update site assignment fields (linkedTemplateId, assignedConsultantId, submissionStatus, etc.)
       allow update: if request.auth != null && isAnyAdmin();
       // Assigned consultant (MEMBER) can update submissionStatus only

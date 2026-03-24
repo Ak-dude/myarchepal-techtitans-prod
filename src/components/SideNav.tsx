@@ -5,7 +5,6 @@ import {
   Newspaper,
   Calendar,
   Store,
-  Heart,
   Plus,
   PlusSquare,
   User,
@@ -53,9 +52,8 @@ const createItems = [
   { icon: BookOpen, label: "Diary", path: "/digital-diary" },
 ];
 
-// Gift Shop submenu items
+// Gift Shop submenu items (Donate Funds hidden on desktop)
 const giftShopItems = [
-  { icon: Heart, label: "Donate Funds", path: "/donations" },
   { icon: Store, label: "Buy Gifts", path: "/gift-shop" },
 ];
 

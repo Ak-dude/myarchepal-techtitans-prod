@@ -142,7 +142,7 @@ function renderValue(field: TemplateField, value: unknown) {
 
     case 'multiselect':
     case 'checkbox': {
-      const vals = value as string[];
+      const vals = Array.isArray(value) ? value : [String(value)];
       return <span className="text-sm">{vals.join(', ')}</span>;
     }
 

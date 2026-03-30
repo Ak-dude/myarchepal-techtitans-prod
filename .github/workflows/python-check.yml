@@ -12,8 +12,8 @@ on:
       - "requirements.txt"
 
 jobs:
-  python-lint:
-    name: Python syntax & style check
+  python-checks:
+    name: Syntax · Ruff · Mypy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,13 +23,35 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install dependencies
+      - name: Install project dependencies
         run: pip install -r requirements.txt
 
-      - name: Check for syntax errors (py_compile)
-        run: python -m py_compile api/index.py api/routers/pdf.py api/routers/export.py api/routers/notify.py api/services/claude_parser.py api/services/fb_admin.py api/services/pdf_builder.py
+      - name: Install linting tools
+        run: pip install ruff mypy
 
-      - name: Lint with ruff (auto-install)
+      # Discover every .py file under api/ dynamically so new files are
+      # checked automatically — no need to update this workflow by hand.
+      - name: Syntax check (py_compile)
         run: |
-          pip install ruff
-          ruff check api/ --select E,F,W --ignore E501
+          find api/ -name "*.py" -not -path "*/__pycache__/*" \
+            | xargs python -m py_compile
+
+      # Ruff: fast linting.  E/F/W cover the most critical error categories;
+      # E501 (line-too-long) is ignored because it's a style preference.
+      - name: Lint with Ruff
+        run: ruff check api/ --select E,F,W --ignore E501
+
+      # Ruff format: ensures consistent formatting on every push.
+      # --check exits non-zero if any file would be reformatted.
+      - name: Format check with Ruff
+        run: ruff format api/ --check
+
+      # Mypy: static type checking.  --ignore-missing-imports prevents
+      # failures caused by third-party packages without bundled stubs
+      # (firebase-admin, reportlab, etc.).
+      - name: Type-check with Mypy
+        run: |
+          mypy api/ \
+            --ignore-missing-imports \
+            --no-error-summary \
+            --exclude '__pycache__'

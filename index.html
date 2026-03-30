@@ -47,6 +47,16 @@
 
   <body>
     <div id="root"></div>
+    <!-- Apply dark mode before React renders to prevent flash -->
+    <script>
+      (function() {
+        var stored = localStorage.getItem('archepal-dark-mode');
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (stored === 'true' || (stored === null && prefersDark)) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -1,4 +1,4 @@
-import { Home, Compass, Plus, Heart, Newspaper, Package, PlusSquare, Calendar, Store, Menu, Users, User, Settings, Lock, Info, Mail, LogOut, ChevronRight, BookOpen, MessageSquare, Star, Building2, Shield, ClipboardList, Upload } from "lucide-react";
+import { Home, Compass, Plus, Heart, Newspaper, Package, PlusSquare, Calendar, Store, Menu, Users, User, Settings, Lock, Info, Mail, LogOut, ChevronRight, BookOpen, MessageSquare, Star, Building2, Shield, ClipboardList, Upload, Moon, Sun } from "lucide-react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useState } from "react";
 import { CreateSiteModal } from "@/components/CreateSiteModal";
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { useArchaeologist } from "@/hooks/use-archaeologist";
 import { useUser } from "@/hooks/use-user";
+import { useDarkMode } from "@/hooks/use-dark-mode";
 
 // Explore items (shown in Explore submenu)
 const exploreItems = [
@@ -55,6 +56,7 @@ export const BottomNav = () => {
   const { isAuthenticated, logout } = useAuth();
   const { isArchaeologist } = useArchaeologist();
   const { isSuperAdmin, isAdmin, isMember } = useUser();
+  const { isDark, toggle: toggleDark } = useDarkMode();
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
   const [isGiftShopSheetOpen, setIsGiftShopSheetOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -391,6 +393,20 @@ export const BottomNav = () => {
                     <ChevronRight className="w-4 h-4 text-muted-foreground" />
                   </Button>
                 ))}
+                {/* Dark Mode Toggle */}
+                <Button
+                  variant="ghost"
+                  className="w-full h-auto py-3 px-4 flex items-center gap-4 hover:bg-muted/80 active:scale-[0.98] rounded-xl transition-all justify-start"
+                  onClick={toggleDark}
+                >
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-muted">
+                    {isDark ? <Sun className="w-5 h-5 text-muted-foreground" /> : <Moon className="w-5 h-5 text-muted-foreground" />}
+                  </div>
+                  <div className="text-left flex-1">
+                    <div className="text-body font-semibold text-foreground font-sans leading-snug">{isDark ? "Light Mode" : "Dark Mode"}</div>
+                    <div className="text-caption text-muted-foreground font-sans leading-snug">Switch appearance</div>
+                  </div>
+                </Button>
                 {/* Logout Button */}
                 <Button
                   variant="ghost"
@@ -433,6 +449,19 @@ export const BottomNav = () => {
                   <div className="text-left flex-1">
                     <div className="text-body font-semibold text-foreground font-sans leading-snug">Contact Us</div>
                     <div className="text-caption text-muted-foreground font-sans leading-snug">Get in touch with us</div>
+                  </div>
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full h-auto py-3 px-4 flex items-center gap-4 hover:bg-muted/80 active:scale-[0.98] rounded-xl transition-all justify-start"
+                  onClick={toggleDark}
+                >
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-muted">
+                    {isDark ? <Sun className="w-5 h-5 text-muted-foreground" /> : <Moon className="w-5 h-5 text-muted-foreground" />}
+                  </div>
+                  <div className="text-left flex-1">
+                    <div className="text-body font-semibold text-foreground font-sans leading-snug">{isDark ? "Light Mode" : "Dark Mode"}</div>
+                    <div className="text-caption text-muted-foreground font-sans leading-snug">Switch appearance</div>
                   </div>
                 </Button>
                 <div className="pt-4 mt-4 border-t border-border space-y-2">

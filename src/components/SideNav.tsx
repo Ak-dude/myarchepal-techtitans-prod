@@ -21,9 +21,12 @@ import {
   Shield,
   FileText,
   ClipboardList,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useState } from "react";
+import { useDarkMode } from "@/hooks/use-dark-mode";
 import { CreateSiteModal } from "@/components/CreateSiteModal";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -73,6 +76,7 @@ export const SideNav = () => {
   const { isAuthenticated, logout } = useAuth();
   const { isArchaeologist } = useArchaeologist();
   const { isSuperAdmin, isAdmin, isMember } = useUser();
+  const { isDark, toggle: toggleDark } = useDarkMode();
   const [isExploreOpen, setIsExploreOpen] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isGiftShopOpen, setIsGiftShopOpen] = useState(false);
@@ -375,6 +379,17 @@ export const SideNav = () => {
           </Collapsible>
         )}
       </nav>
+
+      {/* Dark Mode Toggle */}
+      <div className="px-4 py-3 border-t border-border">
+        <button
+          onClick={toggleDark}
+          className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-foreground hover:bg-muted/50 transition-all duration-200"
+        >
+          {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          {isDark ? "Light Mode" : "Dark Mode"}
+        </button>
+      </div>
 
       {/* Sign In Section - Only for Non-Authenticated Users */}
       {!isAuthenticated && (

@@ -1,3 +1,4 @@
+import React from 'react';
 import { PermissionProvider } from 'permzplus/react';
 import { useUser } from '@/hooks/use-user';
 import { policy } from '@/lib/permissions';
@@ -11,10 +12,11 @@ import { policy } from '@/lib/permissions';
  * is passed — all permission checks will return false until the role loads.
  */
 export const PermissionsWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { highestRole } = useUser();
+  const { highestRole, user } = useUser();
+  const role = highestRole ?? user?.role ?? '';
 
   return (
-    <PermissionProvider engine={policy} role={highestRole ?? ''}>
+    <PermissionProvider engine={policy} role={role}>
       {children}
     </PermissionProvider>
   );

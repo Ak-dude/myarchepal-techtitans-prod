@@ -112,14 +112,15 @@ export const useUser = (): UseUserResult => {
 
   const can = useCallback(
     (permission: AppPermission): boolean => {
-      if (!highestRole) return false;
+      const role = highestRole ?? (user?.role as UserRole | undefined) ?? null;
+      if (!role) return false;
       try {
-        return policy.can(highestRole, permission);
+        return policy.can(role, permission);
       } catch {
         return false;
       }
     },
-    [highestRole],
+    [highestRole, user],
   );
 
   return {

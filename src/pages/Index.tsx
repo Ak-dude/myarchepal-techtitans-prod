@@ -101,21 +101,20 @@ const Index = () => {
       <AppHeader />
 
       {/* Feature Cards */}
-      <div className="px-4 sm:px-6 lg:px-8 py-8 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+      <div className="py-8 max-w-7xl mx-auto">
+        {/* Mobile: horizontal scroll carousel. sm+: 3-column grid */}
+        <div className="flex sm:grid sm:grid-cols-3 gap-4 sm:gap-6 overflow-x-auto sm:overflow-visible snap-x snap-mandatory sm:snap-none scroll-smooth px-4 sm:px-6 lg:px-8 pb-2 sm:pb-0 [-webkit-overflow-scrolling:touch]">
           {/* Featured Content */}
           <Card
-            className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow group"
+            className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow group flex-none w-[80vw] sm:w-auto snap-start"
             onClick={() => navigate("/site-lists")}
           >
-            <div className="aspect-video bg-gradient-to-br from-primary/20 to-primary/5 overflow-hidden">
-              {featuredSite?.images?.[0] ? (
-                <img src={featuredSite.images[0]} alt={featuredSite.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <MapPin className="w-10 h-10 text-primary/40" />
-                </div>
-              )}
+            <div className="aspect-video overflow-hidden">
+              <img
+                src={featuredSite?.images?.[0] ?? "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600&q=80"}
+                alt={featuredSite?.name ?? "Archaeological site"}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              />
             </div>
             <div className="p-4">
               <p className="text-xs font-semibold text-primary uppercase tracking-wide mb-1">Featured Content</p>
@@ -133,17 +132,15 @@ const Index = () => {
 
           {/* Latest Articles */}
           <Card
-            className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow group"
+            className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow group flex-none w-[80vw] sm:w-auto snap-start"
             onClick={() => navigate("/articles")}
           >
-            <div className="aspect-video bg-gradient-to-br from-amber-500/20 to-amber-500/5 overflow-hidden">
-              {latestArticle?.image ? (
-                <img src={latestArticle.image} alt={latestArticle.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-4xl">
-                  {latestArticle?.imageEmoji ?? <BookOpen className="w-10 h-10 text-amber-500/40" />}
-                </div>
-              )}
+            <div className="aspect-video overflow-hidden">
+              <img
+                src={latestArticle?.image ?? "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=600&q=80"}
+                alt={latestArticle?.title ?? "Research articles"}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              />
             </div>
             <div className="p-4">
               <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-1">Latest Articles</p>
@@ -161,11 +158,15 @@ const Index = () => {
 
           {/* Upcoming Events */}
           <Card
-            className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow group"
+            className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow group flex-none w-[80vw] sm:w-auto snap-start"
             onClick={() => navigate("/events")}
           >
-            <div className="aspect-video bg-gradient-to-br from-green-500/20 to-green-500/5 overflow-hidden flex items-center justify-center">
-              <Calendar className="w-10 h-10 text-green-500/40" />
+            <div className="aspect-video overflow-hidden">
+              <img
+                src="https://images.unsplash.com/photo-1511795409834-ef04bbd61622?w=600&q=80"
+                alt="Community events"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              />
             </div>
             <div className="p-4">
               <p className="text-xs font-semibold text-green-600 uppercase tracking-wide mb-1">Upcoming Events</p>

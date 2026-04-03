@@ -18,10 +18,10 @@ import { useUser } from "@/hooks/use-user";
 // Explore items (shown in Explore submenu)
 const exploreItems = [
   { icon: Compass, label: "Sites", description: "Browse archaeological sites", path: "/site-lists" },
+  { icon: BookOpen, label: "Diary", description: "Write in your digital diary", path: "/digital-diary" },
   { icon: Package, label: "Artifacts", description: "Explore discovered artifacts", path: "/artifacts" },
   { icon: Newspaper, label: "Articles", description: "Read research articles", path: "/articles" },
   { icon: Calendar, label: "Events", description: "Upcoming events", path: "/events" },
-  { icon: BookOpen, label: "Diary", description: "Write in your digital diary", path: "/digital-diary" },
 ];
 
 // Create items (for archaeologists)

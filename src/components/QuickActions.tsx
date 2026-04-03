@@ -5,7 +5,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useArchaeologist } from "@/hooks/use-archaeologist";
 
 const actions = [
-  { icon: Compass, label: "Explore Sites", subtitle: "Browse discoveries", color: "bg-primary", textColor: "text-primary-foreground", path: "/site-lists" },
   { icon: Map, label: "Site Map", subtitle: "View excavation", color: "bg-accent", textColor: "text-accent-foreground", path: "/site-map" },
   { icon: FlaskConical, label: "Analysis", subtitle: "Lab results", color: "bg-secondary", textColor: "text-secondary-foreground", path: "/analysis" },
   { icon: Users, label: "Team", subtitle: "Collaborate", color: "bg-muted", textColor: "text-foreground", path: "/team" },

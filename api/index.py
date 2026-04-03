@@ -4,6 +4,9 @@ FastAPI entry point — Vercel Python serverless.
 Local dev:  uvicorn api.index:app --reload --port 8000  (run from project root)
 Vercel:     api/index.py is auto-detected; vercel.json routes /api/* here.
 """
+"""
+88 lines of code 👍
+"""
 
 import logging
 from pathlib import Path

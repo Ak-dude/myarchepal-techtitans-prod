@@ -30,6 +30,21 @@ service firebase.storage {
                         || firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'SUPER_ADMIN');
     }
 
+    // ========================================================================
+    // MERCHANDISE — anyone can read; authenticated users can write
+    // ========================================================================
+    match /merchandise/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ========================================================================
+    // DIARY IMAGES — owner can read/write their own entries
+    // ========================================================================
+    match /diaryImages/{userId}/{allPaths=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Deny everything else
     match /{allPaths=**} {
       allow read, write: if false;

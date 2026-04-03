@@ -48,6 +48,7 @@ export const useUser = (): UseUserResult => {
 
       // Fetch user from users collection
       const userData = await UserService.getByUid(authUser.uid);
+      console.log('🔍 [useUser] fetched userData:', userData);
       setUser(userData);
 
       // Fetch user roles from user_roles collection
